@@ -1,27 +1,36 @@
 import axios from 'axios'
+import toast from 'react-hot-toast'
 
-const API_URL = (import.meta.env.VITE_API_URL || 'https://rmt-billing-backend-production.up.railway.app').replace('http://', 'https://')
+const BASE_URL = (import.meta.env.VITE_API_URL || 'https://rmt-billing-backend-production.up.railway.app').replace('http://', 'https://')
 
 const api = axios.create({
-  baseURL: API_URL + '/api/v1',
+  baseURL: BASE_URL + '/api/v1',
   headers: { 'Content-Type': 'application/json' },
 })
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token')
+  const token = localStorage.getItem('access_token')
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
 
 api.interceptors.response.use(
-  r => r,
-  error => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('token')
+  (res) => res,
+  (err) => {
+    if (err.response?.status === 401) {
+      localStorage.removeItem('access_token')
       window.location.href = '/login'
+    } else if (err.response?.status >= 500) {
+      toast.error('Server error. Please try again.')
     }
-    return Promise.reject(error)
+    return Promise.reject(err)
   }
 )
+
+export const authApi = {
+  login: (data) => api.post('/auth/login', data),
+  register: (data) => api.post('/auth/register', data),
+  me: () => api.get('/auth/me'),
+}
 
 export default api
