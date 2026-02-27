@@ -1,170 +1,128 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { clientsApi } from '../services/api'
-import Modal from '../components/common/Modal'
+import api from '../services/api'
 import toast from 'react-hot-toast'
-import { Plus, Search, Users, AlertCircle } from 'lucide-react'
-import clsx from 'clsx'
+import Modal from '../components/common/Modal'
+import { Plus, Search, Mail, Phone, Edit2, Trash2, Users } from 'lucide-react'
 
-const BILLING_OPTIONS = [
-  { value: 'per_session', label: 'Per Session' },
-  { value: 'weekly', label: 'Weekly' },
-  { value: 'biweekly', label: 'Bi-Weekly' },
-  { value: 'monthly', label: 'Monthly' },
-]
-
-const EMPTY = {
-  first_name: '', last_name: '', email: '', phone: '',
-  billing_frequency: 'per_session', default_rate: '',
-  address: '', city: '', province: '', postal_code: '',
-  insurance_provider: '', insurance_policy_number: '',
-  insurance_member_id: '', notes: '',
-}
-
-function ClientForm({ initial = EMPTY, onSubmit, loading }) {
-  const [form, setForm] = useState(initial)
-  const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
-
-  return (
-    <form onSubmit={e => { e.preventDefault(); onSubmit(form) }} className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <div><label className="label">First Name *</label><input required className="input" value={form.first_name} onChange={set('first_name')} /></div>
-        <div><label className="label">Last Name *</label><input required className="input" value={form.last_name} onChange={set('last_name')} /></div>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div><label className="label">Email</label><input type="email" className="input" value={form.email} onChange={set('email')} /></div>
-        <div><label className="label">Phone</label><input className="input" value={form.phone} onChange={set('phone')} /></div>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="label">Billing Frequency</label>
-          <select className="input" value={form.billing_frequency} onChange={set('billing_frequency')}>
-            {BILLING_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </div>
-        <div><label className="label">Default Rate ($/hr)</label><input type="number" min="0" className="input" placeholder="Leave blank for therapist default" value={form.default_rate} onChange={set('default_rate')} /></div>
-      </div>
-      <div className="grid grid-cols-3 gap-3">
-        <div className="col-span-2"><label className="label">Address</label><input className="input" value={form.address} onChange={set('address')} /></div>
-        <div><label className="label">City</label><input className="input" value={form.city} onChange={set('city')} /></div>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div><label className="label">Province</label><input className="input" placeholder="ON" value={form.province} onChange={set('province')} /></div>
-        <div><label className="label">Postal Code</label><input className="input" value={form.postal_code} onChange={set('postal_code')} /></div>
-      </div>
-      <hr className="border-slate-100" />
-      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Insurance (Optional)</p>
-      <div className="grid grid-cols-2 gap-3">
-        <div><label className="label">Provider</label><input className="input" value={form.insurance_provider} onChange={set('insurance_provider')} /></div>
-        <div><label className="label">Policy #</label><input className="input" value={form.insurance_policy_number} onChange={set('insurance_policy_number')} /></div>
-      </div>
-      <div><label className="label">Notes</label><textarea className="input" rows={2} value={form.notes} onChange={set('notes')} /></div>
-      <div className="flex justify-end gap-2 pt-2">
-        <button type="submit" disabled={loading} className="btn-primary">{loading ? 'Saving…' : 'Save Client'}</button>
-      </div>
-    </form>
-  )
-}
+const empty = { first_name:'', last_name:'', email:'', phone:'', address:'', insurance_provider:'', insurance_policy_number:'', billing_frequency:'monthly', notes:'' }
 
 export default function ClientsPage() {
   const qc = useQueryClient()
   const [search, setSearch] = useState('')
-  const [modal, setModal] = useState(null) // null | 'create' | client object
+  const [modal, setModal] = useState(null)
+  const [form, setForm] = useState(empty)
 
-  const { data: clients = [], isLoading } = useQuery({
-    queryKey: ['clients', search],
-    queryFn: () => clientsApi.list({ search: search || undefined }).then(r => r.data),
+  const { data: clients=[], isLoading } = useQuery({ queryKey: ['clients', search], queryFn: () => api.get('/clients', { params: { search } }).then(r => r.data) })
+
+  const save = useMutation({
+    mutationFn: d => modal?.id ? api.put(`/clients/${modal.id}`, d) : api.post('/clients', d),
+    onSuccess: () => { qc.invalidateQueries(['clients']); setModal(null); toast.success(modal?.id ? 'Client updated!' : 'Client added!') }
   })
-
-  const create = useMutation({
-    mutationFn: (data) => clientsApi.create(data),
-    onSuccess: () => { qc.invalidateQueries(['clients']); setModal(null); toast.success('Client added!') },
-    onError: (e) => toast.error(e.response?.data?.detail || 'Failed'),
-  })
-
-  const update = useMutation({
-    mutationFn: ({ id, data }) => clientsApi.update(id, data),
-    onSuccess: () => { qc.invalidateQueries(['clients']); setModal(null); toast.success('Client updated!') },
-    onError: (e) => toast.error(e.response?.data?.detail || 'Failed'),
+  const del = useMutation({
+    mutationFn: id => api.delete(`/clients/${id}`),
+    onSuccess: () => { qc.invalidateQueries(['clients']); toast.success('Client removed') }
   })
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
+    <div className="stagger-children" style={{display:'flex', flexDirection:'column', gap:'1.5rem'}}>
+      <div className="page-header" style={{display:'flex', alignItems:'flex-start', justifyContent:'space-between'}}>
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Clients</h1>
-          <p className="text-slate-500 text-sm">{clients.length} active clients</p>
+          <h1 className="page-title">Clients</h1>
+          <p className="page-subtitle">{clients.length} active clients</p>
         </div>
-        <button className="btn-primary" onClick={() => setModal('create')}>
-          <Plus size={16} /> Add Client
-        </button>
+        <button onClick={() => { setForm(empty); setModal({}) }} className="btn-primary"><Plus size={16} />Add Client</button>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        <input className="input pl-9" placeholder="Search by name or email…" value={search} onChange={e => setSearch(e.target.value)} />
+      <div className="card" style={{padding:'1rem'}}>
+        <div style={{position:'relative'}}>
+          <Search size={15} style={{position:'absolute', left:'0.75rem', top:'50%', transform:'translateY(-50%)', color:'var(--text-light)'}} />
+          <input className="input" style={{paddingLeft:'2.25rem'}} placeholder="Search by name or email…" value={search} onChange={e => setSearch(e.target.value)} />
+        </div>
       </div>
 
-      {/* Table */}
-      <div className="card overflow-hidden">
-        <table className="table-auto w-full">
-          <thead>
-            <tr>
-              <th>Client</th>
-              <th>Contact</th>
-              <th>Billing</th>
-              <th>Sessions</th>
-              <th>Outstanding</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr><td colSpan={6} className="text-center py-12 text-slate-400">Loading…</td></tr>
-            ) : clients.length === 0 ? (
-              <tr><td colSpan={6} className="text-center py-12">
-                <Users size={32} className="text-slate-300 mx-auto mb-2" />
-                <p className="text-slate-400 text-sm">No clients yet</p>
-              </td></tr>
-            ) : clients.map(c => (
-              <tr key={c.id} className="cursor-pointer" onClick={() => setModal(c)}>
-                <td>
-                  <div className="font-medium text-slate-900">{c.full_name}</div>
-                  <div className="text-xs text-slate-400">{c.email}</div>
-                </td>
-                <td>{c.phone || '—'}</td>
-                <td className="capitalize">{c.billing_frequency?.replace('_', ' ')}</td>
-                <td>{c.session_count}</td>
-                <td className={clsx('font-medium', c.outstanding_balance > 0 ? 'text-red-600' : 'text-slate-400')}>
-                  {c.outstanding_balance > 0 ? `$${c.outstanding_balance.toFixed(2)}` : '—'}
-                </td>
-                <td>
-                  <span className={clsx('badge', c.is_active ? 'badge-paid' : 'badge-cancelled')}>
-                    {c.is_active ? 'Active' : 'Inactive'}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="card" style={{overflow:'hidden'}}>
+        {isLoading ? (
+          <div style={{display:'flex', alignItems:'center', justifyContent:'center', height:'10rem'}}>
+            <div style={{width:'1.5rem', height:'1.5rem', borderRadius:'50%', border:'2px solid var(--teal-500)', borderTopColor:'transparent', animation:'spin 0.8s linear infinite'}} />
+          </div>
+        ) : clients.length === 0 ? (
+          <div className="empty-state">
+            <div style={{width:'3.5rem', height:'3.5rem', borderRadius:'1rem', background:'rgba(23,162,200,0.08)', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:'1rem'}}>
+              <Users size={24} style={{color:'var(--teal-500)'}} />
+            </div>
+            <p style={{fontWeight:600, color:'var(--text-dark)'}}>No clients yet</p>
+            <p style={{fontSize:'0.875rem', marginTop:'0.25rem', marginBottom:'1rem', color:'var(--text-light)'}}>Add your first client to get started</p>
+            <button onClick={() => { setForm(empty); setModal({}) }} className="btn-primary"><Plus size={15} />Add Client</button>
+          </div>
+        ) : (
+          <table className="data-table">
+            <thead><tr><th>Client</th><th>Contact</th><th>Insurance</th><th>Outstanding</th><th>Sessions</th><th></th></tr></thead>
+            <tbody>
+              {clients.map(c => (
+                <tr key={c.id}>
+                  <td>
+                    <div style={{display:'flex', alignItems:'center', gap:'0.75rem'}}>
+                      <div style={{width:'2rem', height:'2rem', borderRadius:'0.5rem', background:'linear-gradient(135deg, var(--teal-600), var(--teal-800))', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'0.75rem', fontWeight:'700', color:'white', flexShrink:0}}>
+                        {c.first_name[0]}{c.last_name[0]}
+                      </div>
+                      <div>
+                        <p style={{fontWeight:600, fontSize:'0.875rem', color:'var(--text-dark)'}}>{c.first_name} {c.last_name}</p>
+                        <p style={{fontSize:'0.75rem', color:'var(--text-light)', textTransform:'capitalize'}}>{c.billing_frequency}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <div style={{display:'flex', flexDirection:'column', gap:'0.25rem'}}>
+                      {c.email && <div style={{display:'flex', alignItems:'center', gap:'0.375rem', fontSize:'0.75rem'}}><Mail size={11} style={{color:'var(--text-light)'}} />{c.email}</div>}
+                      {c.phone && <div style={{display:'flex', alignItems:'center', gap:'0.375rem', fontSize:'0.75rem'}}><Phone size={11} style={{color:'var(--text-light)'}} />{c.phone}</div>}
+                    </div>
+                  </td>
+                  <td><span style={{fontSize:'0.875rem'}}>{c.insurance_provider || <span style={{color:'var(--text-light)'}}>—</span>}</span></td>
+                  <td><span style={{fontWeight:600, fontSize:'0.875rem', color: c.outstanding_balance > 0 ? '#d97706' : 'var(--text-light)'}}>${Number(c.outstanding_balance||0).toFixed(2)}</span></td>
+                  <td><span style={{fontSize:'0.875rem'}}>{c.session_count||0}</span></td>
+                  <td>
+                    <div style={{display:'flex', gap:'0.25rem'}}>
+                      <button onClick={() => { setForm(c); setModal({id:c.id}) }} style={{padding:'0.375rem', borderRadius:'0.5rem', background:'transparent', border:'none', cursor:'pointer'}}><Edit2 size={13} style={{color:'var(--text-light)'}} /></button>
+                      <button onClick={() => del.mutate(c.id)} style={{padding:'0.375rem', borderRadius:'0.5rem', background:'transparent', border:'none', cursor:'pointer'}}><Trash2 size={13} style={{color:'#f87171'}} /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
-      {/* Create Modal */}
-      <Modal isOpen={modal === 'create'} onClose={() => setModal(null)} title="Add Client" size="lg">
-        <ClientForm onSubmit={data => create.mutate(data)} loading={create.isPending} />
+      <Modal isOpen={!!modal} onClose={() => setModal(null)} title={modal?.id ? 'Edit Client' : 'Add New Client'} size="lg">
+        <form onSubmit={e => { e.preventDefault(); save.mutate(form) }} style={{display:'flex', flexDirection:'column', gap:'1rem'}}>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem'}}>
+            <div><label className="label">First Name</label><input required className="input" value={form.first_name} onChange={e => setForm(p=>({...p,first_name:e.target.value}))} /></div>
+            <div><label className="label">Last Name</label><input required className="input" value={form.last_name} onChange={e => setForm(p=>({...p,last_name:e.target.value}))} /></div>
+          </div>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem'}}>
+            <div><label className="label">Email</label><input type="email" className="input" value={form.email||''} onChange={e => setForm(p=>({...p,email:e.target.value}))} /></div>
+            <div><label className="label">Phone</label><input className="input" value={form.phone||''} onChange={e => setForm(p=>({...p,phone:e.target.value}))} /></div>
+          </div>
+          <div><label className="label">Address</label><input className="input" value={form.address||''} onChange={e => setForm(p=>({...p,address:e.target.value}))} /></div>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem'}}>
+            <div><label className="label">Insurance Provider</label><input className="input" value={form.insurance_provider||''} onChange={e => setForm(p=>({...p,insurance_provider:e.target.value}))} /></div>
+            <div><label className="label">Policy Number</label><input className="input" value={form.insurance_policy_number||''} onChange={e => setForm(p=>({...p,insurance_policy_number:e.target.value}))} /></div>
+          </div>
+          <div><label className="label">Billing Frequency</label>
+            <select className="input" value={form.billing_frequency} onChange={e => setForm(p=>({...p,billing_frequency:e.target.value}))}>
+              <option value="per_session">Per Session</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+          <div><label className="label">Notes</label><textarea className="input" rows={2} value={form.notes||''} onChange={e => setForm(p=>({...p,notes:e.target.value}))} /></div>
+          <div style={{display:'flex', gap:'0.75rem', paddingTop:'0.5rem'}}>
+            <button type="submit" disabled={save.isPending} className="btn-primary" style={{flex:1, justifyContent:'center'}}>{save.isPending ? 'Saving…' : 'Save Client'}</button>
+            <button type="button" onClick={() => setModal(null)} className="btn-secondary">Cancel</button>
+          </div>
+        </form>
       </Modal>
-
-      {/* Edit Modal */}
-      {modal && typeof modal === 'object' && (
-        <Modal isOpen onClose={() => setModal(null)} title={`Edit — ${modal.full_name}`} size="lg">
-          <ClientForm
-            initial={{ ...EMPTY, ...modal, default_rate: modal.default_rate || '' }}
-            onSubmit={data => update.mutate({ id: modal.id, data })}
-            loading={update.isPending}
-          />
-        </Modal>
-      )}
     </div>
   )
 }
