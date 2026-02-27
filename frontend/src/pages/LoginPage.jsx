@@ -44,7 +44,7 @@ export default function LoginPage() {
             Professional Practice Management
           </div>
           <h1 className="text-5xl font-bold text-white leading-tight" style={{fontFamily: 'Playfair Display, serif'}}>
-            Manage your practice with confidence
+            Kinevie Therapeutics Inc.
           </h1>
           <p className="text-lg" style={{color: 'rgba(255,255,255,0.5)'}}>
             Invoicing, session tracking, and expense management — built for independent RMTs.
@@ -66,7 +66,7 @@ export default function LoginPage() {
               </div>
             ))}
           </div>
-          <p className="text-sm" style={{color: 'rgba(255,255,255,0.5)'}}>Trusted by RMTs across Canada</p>
+          <p className="text-sm" style={{color: 'rgba(255,255,255,0.5)'}}>Developed by - Crossbolt Technologies Inc.</p>
         </div>
       </div>
 
