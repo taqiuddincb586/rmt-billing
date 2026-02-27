@@ -35,7 +35,7 @@ export default function LoginPage() {
             <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{background: 'linear-gradient(135deg, var(--teal-500), var(--teal-700))'}}>
               <Activity size={20} className="text-white" />
             </div>
-            <span className="text-white font-bold text-lg" style={{fontFamily: 'Playfair Display, serif'}}>RMT Billing</span>
+            <span className="text-white font-bold text-lg" style={{fontFamily: 'Playfair Display, serif'}}>Kinevie App</span>
           </div>
         </div>
         <div className="relative z-10 space-y-6">
@@ -76,7 +76,7 @@ export default function LoginPage() {
             <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{background: 'linear-gradient(135deg, var(--teal-500), var(--teal-700))'}}>
               <Activity size={18} className="text-white" />
             </div>
-            <span className="font-bold text-lg" style={{fontFamily: 'Playfair Display, serif'}}>RMT Billing</span>
+            <span className="font-bold text-lg" style={{fontFamily: 'Playfair Display, serif'}}>Kinevie App</span>
           </div>
           <h2 className="text-3xl font-bold mb-2" style={{fontFamily: 'Playfair Display, serif', color: 'var(--text-dark)'}}>Welcome back</h2>
           <p className="mb-8 text-sm" style={{color: 'var(--text-light)'}}>Sign in to access your practice dashboard</p>
