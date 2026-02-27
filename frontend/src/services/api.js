@@ -27,4 +27,10 @@ api.interceptors.response.use(
   }
 )
 
+// Auth API instance (no token needed for login/register)
+export const authApi = axios.create({
+  baseURL,
+  headers: { 'Content-Type': 'application/json' },
+})
+
 export default api
