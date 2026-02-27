@@ -1,5 +1,29 @@
 import { createContext, useContext, useState, useEffect } from 'react'
-import api from '../services/api'
+import axios from 'axios'
+
+const API_URL = (import.meta.env.VITE_API_URL || 'https://rmt-billing-backend-production.up.railway.app').replace('http://', 'https://')
+const BASE = API_URL + '/api/v1'
+
+const api = axios.create({ baseURL: BASE, headers: { 'Content-Type': 'application/json' } })
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token')
+  if (token) config.headers.Authorization = `Bearer ${token}`
+  return config
+})
+
+api.interceptors.response.use(
+  r => r,
+  error => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token')
+      window.location.href = '/login'
+    }
+    return Promise.reject(error)
+  }
+)
+
+export { api as default }
 
 const AuthContext = createContext(null)
 
@@ -20,10 +44,10 @@ export function AuthProvider({ children }) {
   }, [])
 
   const login = async (email, password) => {
-    const params = new URLSearchParams()
-    params.append('username', email)
-    params.append('password', password)
-    const r = await api.post('/auth/login', params, {
+    const formData = new URLSearchParams()
+    formData.append('username', email)
+    formData.append('password', password)
+    const r = await axios.post(BASE + '/auth/login', formData.toString(), {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
     })
     localStorage.setItem('token', r.data.access_token)
