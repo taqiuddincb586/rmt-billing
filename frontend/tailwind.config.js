@@ -3,20 +3,24 @@ export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
-      colors: {
-        primary: {
-          50: '#eff6ff',
-          100: '#dbeafe',
-          500: '#0066cc',
-          600: '#0057b3',
-          700: '#004499',
-          900: '#1a1a2e',
-        },
-        surface: '#f8f9fe',
-      },
       fontFamily: {
-        sans: ['DM Sans', 'system-ui', 'sans-serif'],
+        sans: ['Outfit', 'system-ui', 'sans-serif'],
+        serif: ['Playfair Display', 'Georgia', 'serif'],
         mono: ['JetBrains Mono', 'monospace'],
+      },
+      colors: {
+        teal: {
+          300: '#7dd4e8',
+          400: '#3dbfde',
+          500: '#17a2c8',
+          600: '#1480a0',
+          700: '#115e78',
+          800: '#0f3a52',
+          900: '#0d2137',
+          950: '#0a1628',
+        },
+        cream: '#faf8f4',
+        gold: '#c9964a',
       },
     },
   },
