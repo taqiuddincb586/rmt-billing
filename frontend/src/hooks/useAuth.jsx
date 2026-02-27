@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react'
-import { authApi } from '../services/api'
+import api from '../services/api'
 
 const AuthContext = createContext(null)
 
@@ -8,11 +8,11 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const token = localStorage.getItem('access_token')
+    const token = localStorage.getItem('token')
     if (token) {
-      authApi.me()
-        .then(res => setUser(res.data))
-        .catch(() => localStorage.removeItem('access_token'))
+      api.get('/users/me')
+        .then(r => setUser(r.data))
+        .catch(() => localStorage.removeItem('token'))
         .finally(() => setLoading(false))
     } else {
       setLoading(false)
@@ -20,23 +20,29 @@ export function AuthProvider({ children }) {
   }, [])
 
   const login = async (email, password) => {
-    const res = await authApi.login({ email, password })
-    localStorage.setItem('access_token', res.data.access_token)
-    const meRes = await authApi.me()
-    setUser(meRes.data)
-    return meRes.data
+    const params = new URLSearchParams()
+    params.append('username', email)
+    params.append('password', password)
+    const r = await api.post('/auth/login', params, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    })
+    localStorage.setItem('token', r.data.access_token)
+    const me = await api.get('/users/me')
+    setUser(me.data)
   }
 
   const logout = () => {
-    localStorage.removeItem('access_token')
+    localStorage.removeItem('token')
     setUser(null)
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, setUser }}>
+    <AuthContext.Provider value={{ user, login, logout, loading }}>
       {children}
     </AuthContext.Provider>
   )
 }
 
-export const useAuth = () => useContext(AuthContext)
+export function useAuth() {
+  return useContext(AuthContext)
+}
