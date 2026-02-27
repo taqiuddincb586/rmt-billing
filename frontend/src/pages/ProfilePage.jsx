@@ -1,111 +1,105 @@
-import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { usersApi } from '../services/api'
-import { useAuth } from '../hooks/useAuth'
+import { useState, useEffect } from 'react'
+import { useQuery, useMutation } from '@tanstack/react-query'
+import api from '../services/api'
 import toast from 'react-hot-toast'
-import { Save } from 'lucide-react'
+import { useAuth } from '../hooks/useAuth'
+import { Save, User, FileText, DollarSign, Building2 } from 'lucide-react'
 
 export default function ProfilePage() {
-  const { user, setUser } = useAuth()
-  const qc = useQueryClient()
+  const { user } = useAuth()
+  const [form, setForm] = useState({})
 
-  const [form, setForm] = useState({
-    full_name: user?.full_name || '',
-    email: user?.email || '',
-    phone: user?.phone || '',
-    registration_number: user?.registration_number || '',
-    tax_number: user?.tax_number || '',
-    address: user?.address || '',
-    city: user?.city || '',
-    province: user?.province || '',
-    postal_code: user?.postal_code || '',
-    default_session_rate: user?.default_session_rate || 100,
-    default_session_duration: user?.default_session_duration || 60,
-    tax_rate: user?.tax_rate || 0.13,
-    invoice_prefix: user?.invoice_prefix || 'INV',
-    password: '',
-  })
-
-  const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
+  const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: () => api.get('/users/me').then(r => r.data) })
+  useEffect(() => { if (profile) setForm(profile) }, [profile])
 
   const save = useMutation({
-    mutationFn: (data) => {
-      const payload = { ...data }
-      if (!payload.password) delete payload.password
-      return usersApi.updateMe(payload)
-    },
-    onSuccess: (res) => {
-      setUser(res.data)
-      toast.success('Profile updated!')
-    },
-    onError: () => toast.error('Update failed'),
+    mutationFn: d => api.put('/users/me', d),
+    onSuccess: () => toast.success('Profile saved!')
   })
 
+  const initials = user?.full_name?.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()
+
+  const Section = ({ title, icon: Icon, children }) => (
+    <div className="card" style={{padding:'1.5rem'}}>
+      <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'1.25rem', paddingBottom:'1rem', borderBottom:'1px solid #f1ede6'}}>
+        <div style={{width:'2rem', height:'2rem', borderRadius:'0.5rem', background:'rgba(23,162,200,0.08)', display:'flex', alignItems:'center', justifyContent:'center'}}>
+          <Icon size={15} style={{color:'var(--teal-600)'}} />
+        </div>
+        <h3 style={{fontWeight:700, fontSize:'0.875rem', fontFamily:'Playfair Display, serif', color:'var(--text-dark)'}}>{title}</h3>
+      </div>
+      {children}
+    </div>
+  )
+
   return (
-    <div className="space-y-6 max-w-2xl">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Profile & Settings</h1>
-        <p className="text-slate-500 text-sm">Manage your therapist profile and billing defaults</p>
+    <div className="stagger-children" style={{display:'flex', flexDirection:'column', gap:'1.5rem', maxWidth:'48rem'}}>
+      <div className="page-header">
+        <h1 className="page-title">Profile & Settings</h1>
+        <p className="page-subtitle">Your practice information and billing defaults</p>
       </div>
 
-      <form onSubmit={e => { e.preventDefault(); save.mutate(form) }} className="space-y-6">
-        {/* Personal Info */}
-        <div className="card p-6 space-y-4">
-          <h2 className="font-semibold text-slate-900">Personal Information</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <div><label className="label">Full Name</label><input required className="input" value={form.full_name} onChange={set('full_name')} /></div>
-            <div><label className="label">Email</label><input type="email" required className="input" value={form.email} onChange={set('email')} /></div>
+      <div className="card" style={{padding:'1.5rem'}}>
+        <div style={{display:'flex', alignItems:'center', gap:'1.25rem'}}>
+          <div style={{width:'4rem', height:'4rem', borderRadius:'1rem', background:'linear-gradient(135deg, var(--teal-500), var(--teal-800))', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.25rem', fontWeight:700, color:'white', flexShrink:0}}>
+            {initials}
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div><label className="label">Phone</label><input className="input" value={form.phone} onChange={set('phone')} /></div>
-            <div><label className="label">Registration #</label><input className="input" placeholder="RMT-00000" value={form.registration_number} onChange={set('registration_number')} /></div>
-          </div>
-          <div><label className="label">HST / Tax Number</label><input className="input" placeholder="12345 6789 RT0001" value={form.tax_number} onChange={set('tax_number')} /></div>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="col-span-2"><label className="label">Address</label><input className="input" value={form.address} onChange={set('address')} /></div>
-            <div><label className="label">City</label><input className="input" value={form.city} onChange={set('city')} /></div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div><label className="label">Province</label><input className="input" placeholder="ON" value={form.province} onChange={set('province')} /></div>
-            <div><label className="label">Postal Code</label><input className="input" value={form.postal_code} onChange={set('postal_code')} /></div>
+          <div>
+            <p style={{fontWeight:700, fontSize:'1.125rem', fontFamily:'Playfair Display, serif', color:'var(--text-dark)'}}>{user?.full_name}</p>
+            <p style={{fontSize:'0.875rem', color:'var(--text-light)'}}>{user?.email}</p>
+            <p style={{fontSize:'0.75rem', marginTop:'0.25rem', color:'var(--teal-600)', fontWeight:500}}>Registered Massage Therapist</p>
           </div>
         </div>
+      </div>
 
-        {/* Billing Defaults */}
-        <div className="card p-6 space-y-4">
-          <h2 className="font-semibold text-slate-900">Billing Defaults</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <div><label className="label">Default Session Rate ($)</label><input type="number" min="0" step="0.01" className="input" value={form.default_session_rate} onChange={set('default_session_rate')} /></div>
-            <div><label className="label">Default Duration (min)</label>
-              <select className="input" value={form.default_session_duration} onChange={set('default_session_duration')}>
-                {[30,45,60,75,90,120].map(d => <option key={d} value={d}>{d} min</option>)}
-              </select>
+      <form onSubmit={e => { e.preventDefault(); save.mutate(form) }} style={{display:'flex', flexDirection:'column', gap:'1rem'}}>
+        <Section title="Personal Information" icon={User}>
+          <div style={{display:'flex', flexDirection:'column', gap:'1rem'}}>
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem'}}>
+              <div><label className="label">Full Name</label><input className="input" value={form.full_name||''} onChange={e => setForm(p=>({...p,full_name:e.target.value}))} /></div>
+              <div><label className="label">Email</label><input type="email" className="input" value={form.email||''} onChange={e => setForm(p=>({...p,email:e.target.value}))} /></div>
+            </div>
+            <div><label className="label">Address</label><input className="input" value={form.address||''} onChange={e => setForm(p=>({...p,address:e.target.value}))} /></div>
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem'}}>
+              <div><label className="label">City</label><input className="input" value={form.city||''} onChange={e => setForm(p=>({...p,city:e.target.value}))} /></div>
+              <div><label className="label">Province</label><input className="input" value={form.province||''} onChange={e => setForm(p=>({...p,province:e.target.value}))} /></div>
+            </div>
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem'}}>
+              <div><label className="label">Postal Code</label><input className="input" value={form.postal_code||''} onChange={e => setForm(p=>({...p,postal_code:e.target.value}))} /></div>
+              <div><label className="label">Phone</label><input className="input" value={form.phone||''} onChange={e => setForm(p=>({...p,phone:e.target.value}))} /></div>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div><label className="label">Default Tax Rate (HST)</label><input type="number" min="0" max="1" step="0.01" className="input" value={form.tax_rate} onChange={set('tax_rate')} /></div>
-            <div><label className="label">Invoice Prefix</label><input className="input" placeholder="INV" value={form.invoice_prefix} onChange={set('invoice_prefix')} /></div>
-          </div>
-          <div className="bg-blue-50 rounded-xl p-4 text-sm text-blue-800">
-            <strong>Invoice Counter:</strong> Next invoice will be {form.invoice_prefix}-{String(user?.invoice_counter || 1000).padStart(4, '0')}
-          </div>
-        </div>
+        </Section>
 
-        {/* Security */}
-        <div className="card p-6 space-y-4">
-          <h2 className="font-semibold text-slate-900">Change Password</h2>
-          <div>
-            <label className="label">New Password (leave blank to keep current)</label>
-            <input type="password" minLength={8} className="input" placeholder="Min. 8 characters" value={form.password} onChange={set('password')} />
+        <Section title="Professional Details" icon={FileText}>
+          <div style={{display:'flex', flexDirection:'column', gap:'1rem'}}>
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem'}}>
+              <div><label className="label">RMT Registration Number</label><input className="input" value={form.registration_number||''} onChange={e => setForm(p=>({...p,registration_number:e.target.value}))} /></div>
+              <div><label className="label">HST Number</label><input className="input" value={form.hst_number||''} onChange={e => setForm(p=>({...p,hst_number:e.target.value}))} /></div>
+            </div>
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem'}}>
+              <div><label className="label">Invoice Prefix</label><input className="input" placeholder="INV" value={form.invoice_prefix||''} onChange={e => setForm(p=>({...p,invoice_prefix:e.target.value}))} /></div>
+              <div><label className="label">Invoice Start Number</label><input type="number" className="input" value={form.invoice_counter||1000} onChange={e => setForm(p=>({...p,invoice_counter:Number(e.target.value)}))} /></div>
+            </div>
           </div>
-        </div>
+        </Section>
 
-        <div className="flex justify-end">
-          <button type="submit" disabled={save.isPending} className="btn-primary">
-            <Save size={16} />
-            {save.isPending ? 'Saving…' : 'Save Changes'}
-          </button>
-        </div>
+        <Section title="Billing Defaults" icon={DollarSign}>
+          <div style={{display:'flex', flexDirection:'column', gap:'1rem'}}>
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem'}}>
+              <div><label className="label">Default Session Rate ($)</label><input type="number" step="0.01" className="input" value={form.default_rate||''} onChange={e => setForm(p=>({...p,default_rate:e.target.value}))} /></div>
+              <div><label className="label">HST Rate (%)</label><input type="number" step="0.01" className="input" value={form.tax_rate||13} onChange={e => setForm(p=>({...p,tax_rate:e.target.value}))} /></div>
+            </div>
+            <div><label className="label">Payment Terms (days)</label><input type="number" className="input" value={form.payment_terms_days||30} onChange={e => setForm(p=>({...p,payment_terms_days:Number(e.target.value)}))} /></div>
+          </div>
+        </Section>
+
+        <Section title="Invoice Notes" icon={Building2}>
+          <div><label className="label">Default Invoice Notes</label><textarea className="input" rows={3} placeholder="Thank you for choosing my services…" value={form.invoice_notes||''} onChange={e => setForm(p=>({...p,invoice_notes:e.target.value}))} /></div>
+        </Section>
+
+        <button type="submit" disabled={save.isPending} className="btn-primary" style={{alignSelf:'flex-start', padding:'0.75rem 2rem'}}>
+          <Save size={16} />{save.isPending ? 'Saving…' : 'Save Changes'}
+        </button>
       </form>
     </div>
   )
