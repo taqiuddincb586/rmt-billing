@@ -1,10 +1,11 @@
 import axios from 'axios'
 import toast from 'react-hot-toast'
 
-const BASE_URL = (import.meta.env.VITE_API_URL || 'https://rmt-billing-backend-production.up.railway.app').replace('http://', 'https://')
+// Hardcoded HTTPS fallback - never use HTTP
+const BASE_URL = 'https://rmt-billing-backend-production.up.railway.app/api/v1'
 
 const api = axios.create({
-  baseURL: BASE_URL + '/api/v1',
+  baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' },
 })
 
