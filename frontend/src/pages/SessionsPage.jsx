@@ -1,177 +1,116 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { sessionsApi, clientsApi, clinicsApi } from '../services/api'
-import Modal from '../components/common/Modal'
+import api from '../services/api'
 import toast from 'react-hot-toast'
-import { Plus, Calendar } from 'lucide-react'
-import clsx from 'clsx'
-import { format } from 'date-fns'
+import Modal from '../components/common/Modal'
+import { Plus, Calendar, Edit2, Trash2 } from 'lucide-react'
 
-const today = () => format(new Date(), 'yyyy-MM-dd')
-
-const EMPTY = {
-  client_id: '', clinic_id: '', date: today(), start_time: '',
-  duration_minutes: 60, status: 'completed', rate: 100,
-  taxes: 0.13, discount: 0, treatment_type: '', soap_notes: '', is_billable: true
-}
-
-function SessionForm({ initial = EMPTY, clients, clinics, onSubmit, loading }) {
-  const [form, setForm] = useState(initial)
-  const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
-  const setBool = k => e => setForm(p => ({ ...p, [k]: e.target.value === 'true' }))
-  const total = (Number(form.rate) * (1 + Number(form.taxes)) - Number(form.discount)).toFixed(2)
-
-  return (
-    <form onSubmit={e => { e.preventDefault(); onSubmit({ ...form, client_id: Number(form.client_id), clinic_id: form.clinic_id ? Number(form.clinic_id) : null }) }} className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="label">Client *</label>
-          <select required className="input" value={form.client_id} onChange={set('client_id')}>
-            <option value="">Select client…</option>
-            {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="label">Clinic</label>
-          <select className="input" value={form.clinic_id} onChange={set('clinic_id')}>
-            <option value="">No clinic / Home office</option>
-            {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div><label className="label">Date</label><input type="date" required className="input" value={form.date} onChange={set('date')} /></div>
-        <div><label className="label">Start Time</label><input type="time" className="input" value={form.start_time} onChange={set('start_time')} /></div>
-      </div>
-      <div className="grid grid-cols-3 gap-3">
-        <div>
-          <label className="label">Duration (min)</label>
-          <select className="input" value={form.duration_minutes} onChange={set('duration_minutes')}>
-            {[30,45,60,75,90,120].map(d => <option key={d} value={d}>{d} min</option>)}
-          </select>
-        </div>
-        <div><label className="label">Rate ($)</label><input type="number" min="0" step="0.01" required className="input" value={form.rate} onChange={set('rate')} /></div>
-        <div><label className="label">HST Rate</label><input type="number" min="0" max="1" step="0.01" className="input" value={form.taxes} onChange={set('taxes')} /></div>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="label">Status</label>
-          <select className="input" value={form.status} onChange={set('status')}>
-            {['completed','scheduled','cancelled','no_show'].map(s => <option key={s} value={s}>{s.replace('_',' ')}</option>)}
-          </select>
-        </div>
-        <div><label className="label">Treatment Type</label><input className="input" placeholder="e.g. Deep Tissue" value={form.treatment_type} onChange={set('treatment_type')} /></div>
-      </div>
-      <div className="bg-slate-50 rounded-xl px-4 py-3 flex items-center justify-between">
-        <span className="text-sm text-slate-500">Session Total (incl. tax)</span>
-        <span className="text-lg font-bold text-slate-900">${total}</span>
-      </div>
-      <div><label className="label">SOAP Notes</label><textarea className="input" rows={3} placeholder="Subjective, Objective, Assessment, Plan" value={form.soap_notes} onChange={set('soap_notes')} /></div>
-      <div className="flex justify-end">
-        <button type="submit" disabled={loading} className="btn-primary">{loading ? 'Saving…' : 'Save Session'}</button>
-      </div>
-    </form>
-  )
-}
+const empty = { client_id:'', clinic_id:'', session_date:'', duration_minutes:60, rate:'', treatment_type:'Swedish Massage', soap_notes:'', status:'completed' }
 
 export default function SessionsPage() {
   const qc = useQueryClient()
   const [modal, setModal] = useState(null)
+  const [form, setForm] = useState(empty)
   const [unbilledOnly, setUnbilledOnly] = useState(false)
 
-  const { data: sessions = [], isLoading } = useQuery({
-    queryKey: ['sessions', unbilledOnly],
-    queryFn: () => sessionsApi.list(unbilledOnly ? { unbilled_only: true } : {}).then(r => r.data),
-  })
-  const { data: clients = [] } = useQuery({ queryKey: ['clients'], queryFn: () => clientsApi.list({}).then(r => r.data) })
-  const { data: clinics = [] } = useQuery({ queryKey: ['clinics'], queryFn: () => clinicsApi.list().then(r => r.data) })
+  const { data: sessions=[], isLoading } = useQuery({ queryKey: ['sessions', unbilledOnly], queryFn: () => api.get('/sessions', { params: { billed: unbilledOnly ? false : undefined } }).then(r => r.data) })
+  const { data: clients=[] } = useQuery({ queryKey: ['clients'], queryFn: () => api.get('/clients').then(r => r.data) })
+  const { data: clinics=[] } = useQuery({ queryKey: ['clinics'], queryFn: () => api.get('/clinics').then(r => r.data) })
 
-  const create = useMutation({
-    mutationFn: sessionsApi.create,
-    onSuccess: () => { qc.invalidateQueries(['sessions']); setModal(null); toast.success('Session recorded!') },
-    onError: e => toast.error(e.response?.data?.detail || 'Failed'),
+  const save = useMutation({
+    mutationFn: d => modal?.id ? api.put(`/sessions/${modal.id}`, d) : api.post('/sessions', d),
+    onSuccess: () => { qc.invalidateQueries(['sessions']); setModal(null); toast.success(modal?.id ? 'Session updated!' : 'Session recorded!') }
   })
-
-  const update = useMutation({
-    mutationFn: ({ id, data }) => sessionsApi.update(id, data),
-    onSuccess: () => { qc.invalidateQueries(['sessions']); setModal(null); toast.success('Session updated!') },
-    onError: e => toast.error(e.response?.data?.detail || 'Failed'),
+  const del = useMutation({
+    mutationFn: id => api.delete(`/sessions/${id}`),
+    onSuccess: () => { qc.invalidateQueries(['sessions']); toast.success('Session removed') }
   })
-
-  const STATUS_COLORS = { completed: 'badge-paid', scheduled: 'badge-sent', cancelled: 'badge-cancelled', no_show: 'badge-overdue' }
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
+    <div className="stagger-children" style={{display:'flex', flexDirection:'column', gap:'1.5rem'}}>
+      <div className="page-header" style={{display:'flex', alignItems:'flex-start', justifyContent:'space-between'}}>
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Sessions</h1>
-          <p className="text-slate-500 text-sm">{sessions.length} sessions</p>
+          <h1 className="page-title">Sessions</h1>
+          <p className="page-subtitle">{sessions.length} sessions recorded</p>
         </div>
-        <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-            <input type="checkbox" checked={unbilledOnly} onChange={e => setUnbilledOnly(e.target.checked)} className="rounded" />
-            Unbilled only
-          </label>
-          <button className="btn-primary" onClick={() => setModal('create')}><Plus size={16} /> New Session</button>
-        </div>
+        <button onClick={() => { setForm({...empty, session_date: new Date().toISOString().split('T')[0]}); setModal({}) }} className="btn-primary"><Plus size={16} />Record Session</button>
       </div>
 
-      <div className="card overflow-hidden">
-        <table className="table-auto w-full">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Client</th>
-              <th>Clinic</th>
-              <th>Duration</th>
-              <th>Treatment</th>
-              <th>Total</th>
-              <th>Invoice</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr><td colSpan={8} className="text-center py-12 text-slate-400">Loading…</td></tr>
-            ) : sessions.length === 0 ? (
-              <tr><td colSpan={8} className="text-center py-12">
-                <Calendar size={32} className="text-slate-300 mx-auto mb-2" />
-                <p className="text-slate-400 text-sm">No sessions yet</p>
-              </td></tr>
-            ) : sessions.map(s => (
-              <tr key={s.id} className="cursor-pointer" onClick={() => setModal(s)}>
-                <td className="font-medium">{s.date}</td>
-                <td>{s.client?.full_name || `#${s.client_id}`}</td>
-                <td className="text-slate-400">{s.clinic_name || '—'}</td>
-                <td>{s.duration_minutes} min</td>
-                <td>{s.treatment_type || '—'}</td>
-                <td className="font-semibold">${s.total?.toFixed(2)}</td>
-                <td>
-                  {s.invoice_id
-                    ? <span className="badge badge-paid">Invoiced</span>
-                    : <span className="badge badge-draft">Unbilled</span>}
-                </td>
-                <td><span className={clsx('badge', STATUS_COLORS[s.status] || 'badge-draft')}>{s.status}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="card" style={{padding:'1rem', display:'flex', alignItems:'center', gap:'0.75rem'}}>
+        <input type="checkbox" id="unbilled" checked={unbilledOnly} onChange={e => setUnbilledOnly(e.target.checked)} style={{borderRadius:'4px', cursor:'pointer'}} />
+        <label htmlFor="unbilled" style={{fontSize:'0.875rem', fontWeight:500, color:'var(--text-mid)', cursor:'pointer'}}>Show unbilled sessions only</label>
       </div>
 
-      <Modal isOpen={modal === 'create'} onClose={() => setModal(null)} title="Record Session" size="lg">
-        <SessionForm clients={clients} clinics={clinics} onSubmit={data => create.mutate(data)} loading={create.isPending} />
+      <div className="card" style={{overflow:'hidden'}}>
+        {isLoading ? (
+          <div style={{display:'flex', alignItems:'center', justifyContent:'center', height:'10rem'}}>
+            <div style={{width:'1.5rem', height:'1.5rem', borderRadius:'50%', border:'2px solid var(--teal-500)', borderTopColor:'transparent', animation:'spin 0.8s linear infinite'}} />
+          </div>
+        ) : sessions.length === 0 ? (
+          <div className="empty-state">
+            <div style={{width:'3.5rem', height:'3.5rem', borderRadius:'1rem', background:'rgba(23,162,200,0.08)', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:'1rem'}}>
+              <Calendar size={24} style={{color:'var(--teal-500)'}} />
+            </div>
+            <p style={{fontWeight:600, color:'var(--text-dark)'}}>No sessions yet</p>
+            <p style={{fontSize:'0.875rem', marginTop:'0.25rem', marginBottom:'1rem', color:'var(--text-light)'}}>Record your first session to begin tracking</p>
+            <button onClick={() => { setForm({...empty, session_date: new Date().toISOString().split('T')[0]}); setModal({}) }} className="btn-primary"><Plus size={15} />Record Session</button>
+          </div>
+        ) : (
+          <table className="data-table">
+            <thead><tr><th>Date</th><th>Client</th><th>Treatment</th><th>Duration</th><th>Rate</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              {sessions.map(s => (
+                <tr key={s.id}>
+                  <td><span style={{fontSize:'0.875rem', fontWeight:500, color:'var(--text-dark)'}}>{new Date(s.session_date).toLocaleDateString('en-CA', {month:'short', day:'numeric', year:'numeric'})}</span></td>
+                  <td><span style={{fontSize:'0.875rem'}}>{s.client_name}</span></td>
+                  <td><span style={{fontSize:'0.875rem'}}>{s.treatment_type}</span></td>
+                  <td><span style={{fontSize:'0.875rem'}}>{s.duration_minutes} min</span></td>
+                  <td><span style={{fontSize:'0.875rem', fontWeight:600, color:'var(--text-dark)'}}>${s.rate}</span></td>
+                  <td><span className={s.is_billed ? 'badge-paid' : 'badge-draft'} style={{display:'inline-flex', alignItems:'center', padding:'0.125rem 0.625rem', borderRadius:'9999px', fontSize:'0.75rem', fontWeight:600, background: s.is_billed ? '#ecfdf5' : '#f5f5f4', color: s.is_billed ? '#065f46' : '#57534e', border: s.is_billed ? '1px solid #a7f3d0' : '1px solid #e7e5e4'}}>{s.is_billed ? 'Billed' : 'Unbilled'}</span></td>
+                  <td>
+                    <div style={{display:'flex', gap:'0.25rem'}}>
+                      <button onClick={() => { setForm(s); setModal({id:s.id}) }} style={{padding:'0.375rem', borderRadius:'0.5rem', background:'transparent', border:'none', cursor:'pointer'}}><Edit2 size={13} style={{color:'var(--text-light)'}} /></button>
+                      <button onClick={() => del.mutate(s.id)} style={{padding:'0.375rem', borderRadius:'0.5rem', background:'transparent', border:'none', cursor:'pointer'}}><Trash2 size={13} style={{color:'#f87171'}} /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <Modal isOpen={!!modal} onClose={() => setModal(null)} title={modal?.id ? 'Edit Session' : 'Record Session'} size="lg">
+        <form onSubmit={e => { e.preventDefault(); save.mutate(form) }} style={{display:'flex', flexDirection:'column', gap:'1rem'}}>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem'}}>
+            <div><label className="label">Client</label>
+              <select required className="input" value={form.client_id} onChange={e => setForm(p=>({...p,client_id:e.target.value}))}>
+                <option value="">Select client…</option>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>)}
+              </select>
+            </div>
+            <div><label className="label">Clinic (optional)</label>
+              <select className="input" value={form.clinic_id||''} onChange={e => setForm(p=>({...p,clinic_id:e.target.value||null}))}>
+                <option value="">None</option>
+                {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem'}}>
+            <div><label className="label">Date</label><input type="date" required className="input" value={form.session_date} onChange={e => setForm(p=>({...p,session_date:e.target.value}))} /></div>
+            <div><label className="label">Duration (min)</label><input type="number" required className="input" value={form.duration_minutes} onChange={e => setForm(p=>({...p,duration_minutes:Number(e.target.value)}))} /></div>
+          </div>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem'}}>
+            <div><label className="label">Rate ($)</label><input type="number" step="0.01" required className="input" value={form.rate} onChange={e => setForm(p=>({...p,rate:e.target.value}))} /></div>
+            <div><label className="label">Treatment Type</label><input className="input" value={form.treatment_type} onChange={e => setForm(p=>({...p,treatment_type:e.target.value}))} /></div>
+          </div>
+          <div><label className="label">SOAP Notes</label><textarea className="input" rows={3} placeholder="Subjective, Objective, Assessment, Plan…" value={form.soap_notes||''} onChange={e => setForm(p=>({...p,soap_notes:e.target.value}))} /></div>
+          <div style={{display:'flex', gap:'0.75rem', paddingTop:'0.5rem'}}>
+            <button type="submit" disabled={save.isPending} className="btn-primary" style={{flex:1, justifyContent:'center'}}>{save.isPending ? 'Saving…' : 'Save Session'}</button>
+            <button type="button" onClick={() => setModal(null)} className="btn-secondary">Cancel</button>
+          </div>
+        </form>
       </Modal>
-
-      {modal && typeof modal === 'object' && (
-        <Modal isOpen onClose={() => setModal(null)} title="Edit Session" size="lg">
-          <SessionForm
-            initial={{ ...EMPTY, ...modal, clinic_id: modal.clinic_id || '', client_id: modal.client_id || '' }}
-            clients={clients} clinics={clinics}
-            onSubmit={data => update.mutate({ id: modal.id, data })}
-            loading={update.isPending}
-          />
-        </Modal>
-      )}
     </div>
   )
 }
