@@ -1,173 +1,136 @@
 import { useQuery } from '@tanstack/react-query'
-import { dashboardApi } from '../services/api'
-import {
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
-} from 'recharts'
-import {
-  DollarSign, TrendingUp, TrendingDown, AlertCircle,
-  Calendar, Users, FileText, Clock
-} from 'lucide-react'
+import api from '../services/api'
+import { useAuth } from '../hooks/useAuth'
+import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { DollarSign, TrendingUp, Clock, Calendar, ArrowUpRight, ArrowDownRight, Users } from 'lucide-react'
 
-const fmt = (n) => `$${Number(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`
-
-const COLORS = ['#0066cc', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4']
-
-function StatCard({ icon: Icon, label, value, sub, color = 'blue' }) {
-  const colors = {
-    blue: 'bg-blue-50 text-blue-600',
-    green: 'bg-emerald-50 text-emerald-600',
-    red: 'bg-red-50 text-red-600',
-    amber: 'bg-amber-50 text-amber-600',
-  }
-  return (
-    <div className="card p-5">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{label}</p>
-          <p className="text-2xl font-bold text-slate-900 mt-1">{value}</p>
-          {sub && <p className="text-xs text-slate-400 mt-1">{sub}</p>}
-        </div>
-        <div className={`p-2.5 rounded-xl ${colors[color]}`}>
-          <Icon size={18} />
-        </div>
-      </div>
-    </div>
-  )
-}
+const COLORS = ['#17a2c8','#c9964a','#10b981','#f59e0b','#8b5cf6','#ef4444']
 
 export default function DashboardPage() {
+  const { user } = useAuth()
   const { data: stats, isLoading } = useQuery({
     queryKey: ['dashboard'],
-    queryFn: () => dashboardApi.stats().then(r => r.data),
+    queryFn: () => api.get('/dashboard/stats').then(r => r.data)
   })
+
+  const firstName = user?.full_name?.split(' ')[0]
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
   if (isLoading) return (
     <div className="flex items-center justify-center h-64">
-      <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full" />
+      <div className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin" style={{borderColor: 'var(--teal-500)', borderTopColor: 'transparent'}} />
     </div>
   )
 
+  const kpis = [
+    { label: 'Total Revenue', value: `$${(stats?.total_revenue||0).toLocaleString('en-CA', {minimumFractionDigits:2})}`, icon: DollarSign, color: 'teal', trend: '+12%', up: true },
+    { label: 'Net Income', value: `$${(stats?.net_income||0).toLocaleString('en-CA', {minimumFractionDigits:2})}`, icon: TrendingUp, color: 'gold', trend: '+8%', up: true },
+    { label: 'Outstanding', value: `$${(stats?.outstanding_balance||0).toLocaleString('en-CA', {minimumFractionDigits:2})}`, icon: Clock, color: 'red', trend: '-3%', up: false },
+    { label: 'Sessions This Month', value: stats?.sessions_this_month || 0, icon: Calendar, color: 'emerald', trend: `${stats?.new_clients_this_month||0} new clients`, up: true },
+  ]
+
+  const colorMap = { teal: 'var(--teal-500)', gold: 'var(--gold)', red: '#ef4444', emerald: '#10b981' }
+  const bgMap = { teal: 'rgba(23,162,200,0.08)', gold: 'rgba(201,150,74,0.08)', red: 'rgba(239,68,68,0.08)', emerald: 'rgba(16,185,129,0.08)' }
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-        <p className="text-slate-500 text-sm mt-0.5">Your practice at a glance</p>
+    <div className="space-y-6 stagger-children">
+      <div className="page-header">
+        <h1 className="page-title">{greeting}, {firstName} 👋</h1>
+        <p className="page-subtitle">{new Date().toLocaleDateString('en-CA', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}</p>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon={DollarSign} label="Total Revenue" value={fmt(stats?.total_revenue)} color="blue" />
-        <StatCard icon={TrendingUp} label="Net Income" value={fmt(stats?.net_income)}
-          sub={`${fmt(stats?.total_expenses)} in expenses`} color="green" />
-        <StatCard icon={AlertCircle} label="Outstanding" value={fmt(stats?.outstanding_balance)}
-          sub={`${stats?.invoices_overdue || 0} overdue`} color={stats?.invoices_overdue > 0 ? 'red' : 'amber'} />
-        <StatCard icon={Calendar} label="Sessions (Month)" value={stats?.sessions_this_month || 0}
-          sub={`${stats?.new_clients_this_month || 0} new clients`} color="blue" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        {kpis.map(({ label, value, icon: Icon, color, trend, up }) => (
+          <div key={label} className="stat-card" style={{borderLeft: `3px solid ${colorMap[color]}`}}>
+            <div className="flex items-start justify-between mb-4">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{background: bgMap[color]}}>
+                <Icon size={18} style={{color: colorMap[color]}} />
+              </div>
+              <div className={`flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full ${up ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+                {up ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
+                {trend}
+              </div>
+            </div>
+            <p className="text-2xl font-bold" style={{color: 'var(--text-dark)'}}>{value}</p>
+            <p className="text-xs mt-1" style={{color: 'var(--text-light)'}}>{label}</p>
+          </div>
+        ))}
       </div>
 
-      {/* Invoice Status Row */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="card p-4 flex items-center gap-3">
-          <div className="p-2 bg-blue-50 rounded-xl"><FileText size={16} className="text-blue-600" /></div>
-          <div>
-            <p className="text-xs text-slate-500">Sent (Unpaid)</p>
-            <p className="text-lg font-bold text-slate-900">{stats?.invoices_unpaid || 0}</p>
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <div className="card p-6 xl:col-span-2">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h3 className="font-bold" style={{fontFamily: 'Playfair Display, serif', color: 'var(--text-dark)'}}>Revenue vs Expenses</h3>
+              <p className="text-xs mt-0.5" style={{color: 'var(--text-light)'}}>Last 12 months</p>
+            </div>
           </div>
-        </div>
-        <div className="card p-4 flex items-center gap-3">
-          <div className="p-2 bg-red-50 rounded-xl"><Clock size={16} className="text-red-600" /></div>
-          <div>
-            <p className="text-xs text-slate-500">Overdue</p>
-            <p className="text-lg font-bold text-red-600">{stats?.invoices_overdue || 0}</p>
-          </div>
-        </div>
-        <div className="card p-4 flex items-center gap-3">
-          <div className="p-2 bg-emerald-50 rounded-xl"><Users size={16} className="text-emerald-600" /></div>
-          <div>
-            <p className="text-xs text-slate-500">New Clients</p>
-            <p className="text-lg font-bold text-slate-900">{stats?.new_clients_this_month || 0}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Charts */}
-      <div className="grid grid-cols-3 gap-6">
-        {/* Revenue Chart */}
-        <div className="col-span-2 card p-5">
-          <h3 className="text-sm font-semibold text-slate-900 mb-4">Revenue vs Expenses (12 months)</h3>
           <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={stats?.revenue_by_month || []}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94a3b8' }} />
-              <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={v => `$${v}`} />
-              <Tooltip formatter={(v) => fmt(v)} />
-              <Area type="monotone" dataKey="revenue" stackId="1" stroke="#0066cc" fill="#dbeafe" strokeWidth={2} name="Revenue" />
-              <Area type="monotone" dataKey="expenses" stackId="2" stroke="#ef4444" fill="#fef2f2" strokeWidth={2} name="Expenses" />
+            <AreaChart data={stats?.monthly_revenue || []}>
+              <defs>
+                <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="var(--teal-500)" stopOpacity={0.15}/>
+                  <stop offset="95%" stopColor="var(--teal-500)" stopOpacity={0}/>
+                </linearGradient>
+                <linearGradient id="expGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="var(--gold)" stopOpacity={0.15}/>
+                  <stop offset="95%" stopColor="var(--gold)" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0ece4" />
+              <XAxis dataKey="month" tick={{fontSize:11, fill:'var(--text-light)'}} axisLine={false} tickLine={false} />
+              <YAxis tick={{fontSize:11, fill:'var(--text-light)'}} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} />
+              <Tooltip contentStyle={{borderRadius:'12px', border:'1px solid #e8e4dc', fontSize:'12px'}} />
+              <Area type="monotone" dataKey="revenue" stroke="var(--teal-500)" strokeWidth={2} fill="url(#revGrad)" name="Revenue" />
+              <Area type="monotone" dataKey="expenses" stroke="var(--gold)" strokeWidth={2} fill="url(#expGrad)" name="Expenses" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
 
-        {/* Expense Breakdown */}
-        <div className="card p-5">
-          <h3 className="text-sm font-semibold text-slate-900 mb-4">Expenses by Category</h3>
-          {stats?.expense_by_category?.length > 0 ? (
-            <>
-              <ResponsiveContainer width="100%" height={160}>
-                <PieChart>
-                  <Pie data={stats.expense_by_category} dataKey="total" nameKey="category"
-                    cx="50%" cy="50%" outerRadius={65} strokeWidth={2}>
-                    {stats.expense_by_category.map((_, i) => (
-                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(v) => fmt(v)} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="space-y-1.5 mt-3">
-                {stats.expense_by_category.slice(0, 4).map((item, i) => (
-                  <div key={item.category} className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
-                      <span className="text-slate-600 capitalize">{item.category}</span>
-                    </div>
-                    <span className="font-medium text-slate-900">{fmt(item.total)}</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            <p className="text-sm text-slate-400 text-center mt-8">No expenses recorded</p>
-          )}
-        </div>
-      </div>
-
-      {/* Top Clients */}
-      {stats?.top_clients?.length > 0 && (
-        <div className="card p-5">
-          <h3 className="text-sm font-semibold text-slate-900 mb-4">Top Clients by Revenue</h3>
-          <div className="space-y-3">
-            {stats.top_clients.map((client, i) => (
-              <div key={client.name} className="flex items-center gap-3">
-                <span className="text-xs font-bold text-slate-400 w-5">#{i + 1}</span>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium text-slate-700">{client.name}</span>
-                    <span className="text-sm font-semibold text-slate-900">{fmt(client.total)}</span>
-                  </div>
-                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-blue-500 rounded-full"
-                      style={{ width: `${(client.total / stats.top_clients[0].total) * 100}%` }}
-                    />
-                  </div>
+        <div className="card p-6">
+          <h3 className="font-bold mb-1" style={{fontFamily: 'Playfair Display, serif', color: 'var(--text-dark)'}}>Expenses</h3>
+          <p className="text-xs mb-4" style={{color: 'var(--text-light)'}}>By category</p>
+          <ResponsiveContainer width="100%" height={140}>
+            <PieChart>
+              <Pie data={stats?.expense_breakdown||[]} cx="50%" cy="50%" innerRadius={40} outerRadius={65} paddingAngle={3} dataKey="amount">
+                {(stats?.expense_breakdown||[]).map((_,i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+              </Pie>
+              <Tooltip formatter={v => `$${Number(v).toFixed(2)}`} contentStyle={{borderRadius:'12px', fontSize:'12px'}} />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="space-y-2 mt-2">
+            {(stats?.expense_breakdown||[]).slice(0,4).map((item, i) => (
+              <div key={i} className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full" style={{background: COLORS[i]}} />
+                  <span style={{color: 'var(--text-mid)'}}>{item.category}</span>
                 </div>
+                <span className="font-semibold" style={{color: 'var(--text-dark)'}}>${Number(item.amount).toFixed(0)}</span>
               </div>
             ))}
           </div>
         </div>
-      )}
+      </div>
+
+      <div className="card p-6">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h3 className="font-bold" style={{fontFamily: 'Playfair Display, serif', color: 'var(--text-dark)'}}>Top Clients</h3>
+            <p className="text-xs mt-0.5" style={{color: 'var(--text-light)'}}>By revenue generated</p>
+          </div>
+          <Users size={16} style={{color: 'var(--text-light)'}} />
+        </div>
+        <ResponsiveContainer width="100%" height={180}>
+          <BarChart data={stats?.top_clients||[]} layout="vertical">
+            <CartesianGrid strokeDasharray="3 3" stroke="#f0ece4" horizontal={false} />
+            <XAxis type="number" tick={{fontSize:11, fill:'var(--text-light)'}} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} />
+            <YAxis type="category" dataKey="name" tick={{fontSize:11, fill:'var(--text-mid)'}} axisLine={false} tickLine={false} width={100} />
+            <Tooltip formatter={v => `$${Number(v).toFixed(2)}`} contentStyle={{borderRadius:'12px', fontSize:'12px'}} />
+            <Bar dataKey="revenue" fill="var(--teal-500)" radius={[0,6,6,0]} name="Revenue" />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   )
 }
