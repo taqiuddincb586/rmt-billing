@@ -1,142 +1,130 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { expensesApi } from '../services/api'
-import Modal from '../components/common/Modal'
+import api from '../services/api'
 import toast from 'react-hot-toast'
-import { Plus, Receipt } from 'lucide-react'
-import { format } from 'date-fns'
+import Modal from '../components/common/Modal'
+import { Plus, Receipt, Edit2, Trash2, CheckCircle } from 'lucide-react'
 
-const CATEGORIES = ['supplies','equipment','rent','insurance','education','marketing','software','utilities','other']
-const today = () => format(new Date(), 'yyyy-MM-dd')
-const EMPTY = { category: 'supplies', description: '', amount: '', tax_amount: 0, date: today(), vendor: '', is_tax_deductible: true, notes: '' }
-
-function ExpenseForm({ initial = EMPTY, onSubmit, loading }) {
-  const [form, setForm] = useState(initial)
-  const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
-  return (
-    <form onSubmit={e => { e.preventDefault(); onSubmit({ ...form, amount: Number(form.amount), tax_amount: Number(form.tax_amount) }) }} className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="label">Category</label>
-          <select required className="input" value={form.category} onChange={set('category')}>
-            {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
-          </select>
-        </div>
-        <div><label className="label">Date</label><input type="date" required className="input" value={form.date} onChange={set('date')} /></div>
-      </div>
-      <div><label className="label">Description *</label><input required className="input" value={form.description} onChange={set('description')} /></div>
-      <div className="grid grid-cols-2 gap-3">
-        <div><label className="label">Amount ($) *</label><input type="number" required min="0" step="0.01" className="input" value={form.amount} onChange={set('amount')} /></div>
-        <div><label className="label">Tax Paid ($)</label><input type="number" min="0" step="0.01" className="input" value={form.tax_amount} onChange={set('tax_amount')} /></div>
-      </div>
-      <div><label className="label">Vendor</label><input className="input" value={form.vendor} onChange={set('vendor')} /></div>
-      <label className="flex items-center gap-2 cursor-pointer">
-        <input type="checkbox" checked={form.is_tax_deductible} onChange={e => setForm(p => ({ ...p, is_tax_deductible: e.target.checked }))} />
-        <span className="text-sm text-slate-700">Tax deductible expense</span>
-      </label>
-      <div><label className="label">Notes</label><textarea className="input" rows={2} value={form.notes} onChange={set('notes')} /></div>
-      <div className="flex justify-end">
-        <button type="submit" disabled={loading} className="btn-primary">{loading ? 'Saving…' : 'Save Expense'}</button>
-      </div>
-    </form>
-  )
-}
+const CATS = ['rent','supplies','equipment','insurance','marketing','education','travel','other']
+const empty = { description:'', amount:'', category:'supplies', expense_date: new Date().toISOString().split('T')[0], vendor:'', is_tax_deductible:true, notes:'' }
 
 export default function ExpensesPage() {
   const qc = useQueryClient()
   const [modal, setModal] = useState(null)
-  const [catFilter, setCatFilter] = useState('')
+  const [form, setForm] = useState(empty)
+  const [catFilter, setCatFilter] = useState('all')
 
-  const { data: expenses = [], isLoading } = useQuery({
+  const { data: expenses=[], isLoading } = useQuery({
     queryKey: ['expenses', catFilter],
-    queryFn: () => expensesApi.list(catFilter ? { category: catFilter } : {}).then(r => r.data),
+    queryFn: () => api.get('/expenses', { params: { category: catFilter==='all'?undefined:catFilter } }).then(r => r.data)
   })
 
-  const create = useMutation({
-    mutationFn: expensesApi.create,
-    onSuccess: () => { qc.invalidateQueries(['expenses', 'dashboard']); setModal(null); toast.success('Expense added!') },
-    onError: e => toast.error(e.response?.data?.detail || 'Failed'),
+  const save = useMutation({
+    mutationFn: d => modal?.id ? api.put(`/expenses/${modal.id}`, d) : api.post('/expenses', d),
+    onSuccess: () => { qc.invalidateQueries(['expenses']); setModal(null); toast.success(modal?.id ? 'Expense updated!' : 'Expense added!') }
   })
-
   const del = useMutation({
-    mutationFn: expensesApi.delete,
-    onSuccess: () => { qc.invalidateQueries(['expenses', 'dashboard']); toast.success('Deleted') },
+    mutationFn: id => api.delete(`/expenses/${id}`),
+    onSuccess: () => { qc.invalidateQueries(['expenses']); toast.success('Expense removed') }
   })
 
-  const total = expenses.reduce((s, e) => s + e.amount, 0)
-  const deductible = expenses.filter(e => e.is_tax_deductible).reduce((s, e) => s + e.amount, 0)
-
-  const CAT_COLORS = {
-    supplies: 'bg-blue-100 text-blue-700', equipment: 'bg-purple-100 text-purple-700',
-    rent: 'bg-amber-100 text-amber-700', insurance: 'bg-green-100 text-green-700',
-    education: 'bg-cyan-100 text-cyan-700', marketing: 'bg-pink-100 text-pink-700',
-    software: 'bg-indigo-100 text-indigo-700', utilities: 'bg-orange-100 text-orange-700',
-    other: 'bg-slate-100 text-slate-600',
-  }
+  const total = expenses.reduce((s, e) => s + Number(e.amount||0), 0)
+  const deductible = expenses.filter(e => e.is_tax_deductible).reduce((s, e) => s + Number(e.amount||0), 0)
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
+    <div className="stagger-children" style={{display:'flex', flexDirection:'column', gap:'1.5rem'}}>
+      <div className="page-header" style={{display:'flex', alignItems:'flex-start', justifyContent:'space-between'}}>
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Expenses</h1>
-          <p className="text-slate-500 text-sm">${total.toFixed(2)} total · ${deductible.toFixed(2)} deductible</p>
+          <h1 className="page-title">Expenses</h1>
+          <p className="page-subtitle">Track your practice expenses</p>
         </div>
-        <button className="btn-primary" onClick={() => setModal('create')}><Plus size={16} /> Add Expense</button>
+        <button onClick={() => { setForm(empty); setModal({}) }} className="btn-primary"><Plus size={16} />Add Expense</button>
       </div>
 
-      {/* Category filter */}
-      <div className="flex flex-wrap gap-2">
-        <button onClick={() => setCatFilter('')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${!catFilter ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}>All</button>
-        {CATEGORIES.map(c => (
-          <button key={c} onClick={() => setCatFilter(c)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium capitalize transition-colors ${catFilter === c ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}>
-            {c}
-          </button>
-        ))}
+      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem'}}>
+        <div className="stat-card stat-card-teal">
+          <p style={{fontSize:'0.75rem', marginBottom:'0.25rem', color:'var(--text-light)'}}>Total Expenses</p>
+          <p style={{fontSize:'1.5rem', fontWeight:700, color:'var(--text-dark)'}}>${total.toFixed(2)}</p>
+        </div>
+        <div className="stat-card stat-card-gold">
+          <p style={{fontSize:'0.75rem', marginBottom:'0.25rem', color:'var(--text-light)'}}>Tax Deductible</p>
+          <p style={{fontSize:'1.5rem', fontWeight:700, color:'var(--text-dark)'}}>${deductible.toFixed(2)}</p>
+        </div>
       </div>
 
-      <div className="card overflow-hidden">
-        <table className="table-auto w-full">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Category</th>
-              <th>Description</th>
-              <th>Vendor</th>
-              <th>Amount</th>
-              <th>Tax</th>
-              <th>Deductible</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr><td colSpan={8} className="text-center py-12 text-slate-400">Loading…</td></tr>
-            ) : expenses.length === 0 ? (
-              <tr><td colSpan={8} className="text-center py-12">
-                <Receipt size={32} className="text-slate-300 mx-auto mb-2" />
-                <p className="text-slate-400 text-sm">No expenses recorded</p>
-              </td></tr>
-            ) : expenses.map(e => (
-              <tr key={e.id}>
-                <td>{e.date}</td>
-                <td><span className={`badge ${CAT_COLORS[e.category] || 'badge-draft'} capitalize`}>{e.category}</span></td>
-                <td className="font-medium">{e.description}</td>
-                <td className="text-slate-400">{e.vendor || '—'}</td>
-                <td className="font-semibold">${e.amount.toFixed(2)}</td>
-                <td className="text-slate-400">${e.tax_amount.toFixed(2)}</td>
-                <td>{e.is_tax_deductible ? <span className="badge-paid badge">Yes</span> : <span className="badge-draft badge">No</span>}</td>
-                <td>
-                  <button onClick={() => del.mutate(e.id)} className="text-xs text-red-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50">Delete</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="card" style={{padding:'1rem'}}>
+        <div style={{display:'flex', flexWrap:'wrap', gap:'0.5rem'}}>
+          {['all', ...CATS].map(c => (
+            <button key={c} onClick={() => setCatFilter(c)} style={{padding:'0.375rem 0.75rem', borderRadius:'0.5rem', fontSize:'0.75rem', fontWeight:600, textTransform:'capitalize', border:'none', cursor:'pointer', background: catFilter===c ? 'var(--teal-600)' : '#f5f2ed', color: catFilter===c ? 'white' : 'var(--text-mid)', transition:'all 0.15s'}}>
+              {c}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <Modal isOpen={modal === 'create'} onClose={() => setModal(null)} title="Add Expense">
-        <ExpenseForm onSubmit={data => create.mutate(data)} loading={create.isPending} />
+      <div className="card" style={{overflow:'hidden'}}>
+        {isLoading ? (
+          <div style={{display:'flex', alignItems:'center', justifyContent:'center', height:'10rem'}}>
+            <div style={{width:'1.5rem', height:'1.5rem', borderRadius:'50%', border:'2px solid var(--teal-500)', borderTopColor:'transparent', animation:'spin 0.8s linear infinite'}} />
+          </div>
+        ) : expenses.length === 0 ? (
+          <div className="empty-state">
+            <div style={{width:'3.5rem', height:'3.5rem', borderRadius:'1rem', background:'rgba(23,162,200,0.08)', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:'1rem'}}>
+              <Receipt size={24} style={{color:'var(--teal-500)'}} />
+            </div>
+            <p style={{fontWeight:600, color:'var(--text-dark)'}}>No expenses yet</p>
+            <p style={{fontSize:'0.875rem', marginTop:'0.25rem', marginBottom:'1rem', color:'var(--text-light)'}}>Start tracking your business expenses</p>
+            <button onClick={() => { setForm(empty); setModal({}) }} className="btn-primary"><Plus size={15} />Add Expense</button>
+          </div>
+        ) : (
+          <table className="data-table">
+            <thead><tr><th>Description</th><th>Date</th><th>Category</th><th>Vendor</th><th>Amount</th><th>Deductible</th><th></th></tr></thead>
+            <tbody>
+              {expenses.map(e => (
+                <tr key={e.id}>
+                  <td><span style={{fontWeight:500, fontSize:'0.875rem', color:'var(--text-dark)'}}>{e.description}</span></td>
+                  <td><span style={{fontSize:'0.75rem'}}>{new Date(e.expense_date).toLocaleDateString('en-CA')}</span></td>
+                  <td><span style={{display:'inline-flex', alignItems:'center', padding:'0.125rem 0.625rem', borderRadius:'9999px', fontSize:'0.75rem', fontWeight:600, background:'#f5f5f4', color:'#57534e', border:'1px solid #e7e5e4', textTransform:'capitalize'}}>{e.category}</span></td>
+                  <td><span style={{fontSize:'0.875rem'}}>{e.vendor||'—'}</span></td>
+                  <td><span style={{fontWeight:600, fontSize:'0.875rem', color:'var(--text-dark)'}}>${Number(e.amount).toFixed(2)}</span></td>
+                  <td>{e.is_tax_deductible && <CheckCircle size={16} style={{color:'#10b981'}} />}</td>
+                  <td>
+                    <div style={{display:'flex', gap:'0.25rem'}}>
+                      <button onClick={() => { setForm(e); setModal({id:e.id}) }} style={{padding:'0.375rem', borderRadius:'0.5rem', background:'transparent', border:'none', cursor:'pointer'}}><Edit2 size={13} style={{color:'var(--text-light)'}} /></button>
+                      <button onClick={() => del.mutate(e.id)} style={{padding:'0.375rem', borderRadius:'0.5rem', background:'transparent', border:'none', cursor:'pointer'}}><Trash2 size={13} style={{color:'#f87171'}} /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <Modal isOpen={!!modal} onClose={() => setModal(null)} title={modal?.id ? 'Edit Expense' : 'Add Expense'}>
+        <form onSubmit={e => { e.preventDefault(); save.mutate(form) }} style={{display:'flex', flexDirection:'column', gap:'1rem'}}>
+          <div><label className="label">Description</label><input required className="input" value={form.description} onChange={e => setForm(p=>({...p,description:e.target.value}))} /></div>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem'}}>
+            <div><label className="label">Amount ($)</label><input type="number" step="0.01" required className="input" value={form.amount} onChange={e => setForm(p=>({...p,amount:e.target.value}))} /></div>
+            <div><label className="label">Date</label><input type="date" required className="input" value={form.expense_date} onChange={e => setForm(p=>({...p,expense_date:e.target.value}))} /></div>
+          </div>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem'}}>
+            <div><label className="label">Category</label>
+              <select className="input" value={form.category} onChange={e => setForm(p=>({...p,category:e.target.value}))}>
+                {CATS.map(c => <option key={c} value={c} style={{textTransform:'capitalize'}}>{c}</option>)}
+              </select>
+            </div>
+            <div><label className="label">Vendor</label><input className="input" value={form.vendor||''} onChange={e => setForm(p=>({...p,vendor:e.target.value}))} /></div>
+          </div>
+          <label style={{display:'flex', alignItems:'center', gap:'0.75rem', cursor:'pointer'}}>
+            <input type="checkbox" checked={form.is_tax_deductible} onChange={e => setForm(p=>({...p,is_tax_deductible:e.target.checked}))} />
+            <span style={{fontSize:'0.875rem', fontWeight:500, color:'var(--text-mid)'}}>Tax deductible expense</span>
+          </label>
+          <div style={{display:'flex', gap:'0.75rem', paddingTop:'0.5rem'}}>
+            <button type="submit" disabled={save.isPending} className="btn-primary" style={{flex:1, justifyContent:'center'}}>{save.isPending ? 'Saving…' : 'Save Expense'}</button>
+            <button type="button" onClick={() => setModal(null)} className="btn-secondary">Cancel</button>
+          </div>
+        </form>
       </Modal>
     </div>
   )
