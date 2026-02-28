@@ -2,183 +2,173 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../services/api'
 import toast from 'react-hot-toast'
-import Modal from '../components/common/Modal'
-import { Plus, FileText, Download, Send, DollarSign, Search } from 'lucide-react'
 
-const STATUS_TABS = ['all','draft','sent','paid','overdue','cancelled']
+const fetchInvoices = () => api.get('/invoices/').then(r => r.data)
+const fetchClients = () => api.get('/clients/').then(r => r.data)
 
 export default function InvoicesPage() {
-  const qc = useQueryClient()
-  const [status, setStatus] = useState('all')
-  const [search, setSearch] = useState('')
-  const [payModal, setPayModal] = useState(null)
-  const [createModal, setCreateModal] = useState(false)
-  const [payForm, setPayForm] = useState({ amount:'', payment_method:'bank_transfer', notes:'' })
-  const [createForm, setCreateForm] = useState({ client_id:'', session_ids:[], due_date:'', notes:'' })
+  const queryClient = useQueryClient()
+  const { data: invoices = [], isLoading } = useQuery({ queryKey: ['invoices'], queryFn: fetchInvoices })
+  const { data: clients = [] } = useQuery({ queryKey: ['clients'], queryFn: fetchClients })
+  const [showModal, setShowModal] = useState(false)
+  const [filterStatus, setFilterStatus] = useState('')
 
-  const { data: invoices=[], isLoading } = useQuery({
-    queryKey: ['invoices', status, search],
-    queryFn: () => api.get('/invoices', { params: { status: status==='all'?undefined:status, search } }).then(r => r.data)
-  })
-  const { data: clients=[] } = useQuery({ queryKey: ['clients'], queryFn: () => api.get('/clients').then(r => r.data) })
-  const { data: sessions=[] } = useQuery({ queryKey: ['sessions-unbilled'], queryFn: () => api.get('/sessions', { params: { billed: false } }).then(r => r.data) })
+  const today = new Date().toISOString().split('T')[0]
+  const due = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]
+  const emptyForm = { client_id: '', issue_date: today, due_date: due, tax_rate: 0.13, discount: 0, notes: '', session_ids: [], line_items: [] }
+  const [form, setForm] = useState(emptyForm)
 
-  const createInv = useMutation({
-    mutationFn: d => api.post('/invoices', d),
-    onSuccess: () => { qc.invalidateQueries(['invoices']); setCreateModal(false); toast.success('Invoice created!') }
+  const createMutation = useMutation({
+    mutationFn: (data) => api.post('/invoices/', data),
+    onSuccess: () => { queryClient.invalidateQueries(['invoices']); toast.success('Invoice created!'); setShowModal(false); setForm(emptyForm) },
+    onError: () => toast.error('Failed to create invoice')
   })
+
+  const handleSubmit = () => {
+    if (!form.client_id) return toast.error('Please select a client')
+    const payload = { ...form, client_id: parseInt(form.client_id), tax_rate: parseFloat(form.tax_rate), discount: parseFloat(form.discount) || 0 }
+    createMutation.mutate(payload)
+  }
+
   const recordPayment = useMutation({
-    mutationFn: ({ id, data }) => api.post(`/invoices/${id}/payments`, data),
-    onSuccess: () => { qc.invalidateQueries(['invoices']); setPayModal(null); toast.success('Payment recorded!') }
-  })
-  const sendEmail = useMutation({
-    mutationFn: id => api.post(`/invoices/${id}/send-email`),
-    onSuccess: () => { qc.invalidateQueries(['invoices']); toast.success('Invoice sent by email!') }
+    mutationFn: ({ id, data }) => api.post(`/invoices/${id}/payments/`, data),
+    onSuccess: () => { queryClient.invalidateQueries(['invoices']); toast.success('Payment recorded!') },
+    onError: () => toast.error('Failed to record payment')
   })
 
-  const openPdf = async (id) => {
-    try {
-      const r = await api.post(`/invoices/${id}/generate-pdf`, {}, { responseType: 'blob' })
-      window.open(URL.createObjectURL(new Blob([r.data], { type: 'application/pdf' })))
-    } catch { toast.error('Could not generate PDF') }
-  }
+  const displayed = filterStatus ? invoices.filter(i => i.status === filterStatus) : invoices
 
-  const statusBadge = (s) => {
-    const map = {
-      paid: {bg:'#ecfdf5', color:'#065f46', border:'#a7f3d0'},
-      sent: {bg:'#f0f9ff', color:'#0369a1', border:'#bae6fd'},
-      overdue: {bg:'#fef2f2', color:'#991b1b', border:'#fecaca'},
-      draft: {bg:'#f5f5f4', color:'#57534e', border:'#e7e5e4'},
-      cancelled: {bg:'#fafaf9', color:'#a8a29e', border:'#e7e5e4'},
-    }
-    const c = map[s] || map.draft
-    return <span style={{display:'inline-flex', alignItems:'center', padding:'0.125rem 0.625rem', borderRadius:'9999px', fontSize:'0.75rem', fontWeight:600, background:c.bg, color:c.color, border:`1px solid ${c.border}`, textTransform:'capitalize'}}>{s}</span>
-  }
+  const statusColor = { draft: '#374151', sent: '#1d4ed8', paid: '#166534', overdue: '#dc2626', cancelled: '#6b7280' }
+  const statusBg = { draft: '#f3f4f6', sent: '#eff6ff', paid: '#f0fdf4', overdue: '#fef2f2', cancelled: '#f9fafb' }
+
+  const totalRevenue = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + (i.total || 0), 0)
+  const totalOutstanding = invoices.filter(i => ['sent', 'overdue'].includes(i.status)).reduce((s, i) => s + (i.balance_due || 0), 0)
 
   return (
-    <div className="stagger-children" style={{display:'flex', flexDirection:'column', gap:'1.5rem'}}>
-      <div className="page-header" style={{display:'flex', alignItems:'flex-start', justifyContent:'space-between'}}>
+    <div style={{ padding: '2rem', fontFamily: 'Inter, sans-serif', background: '#f8faf9', minHeight: '100vh' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <div>
-          <h1 className="page-title">Invoices</h1>
-          <p className="page-subtitle">{invoices.length} invoices</p>
+          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#1a2e1a', margin: 0 }}>Invoices</h1>
+          <p style={{ color: '#6b7280', margin: '0.25rem 0 0', fontSize: '0.9rem' }}>{invoices.length} total invoice{invoices.length !== 1 ? 's' : ''}</p>
         </div>
-        <button onClick={() => setCreateModal(true)} className="btn-primary"><Plus size={16} />New Invoice</button>
+        <button onClick={() => { setForm(emptyForm); setShowModal(true) }}
+          style={{ background: 'linear-gradient(135deg, #0d9488, #0f766e)', color: '#fff', border: 'none', borderRadius: '10px', padding: '0.65rem 1.25rem', fontWeight: 600, cursor: 'pointer', fontSize: '0.95rem' }}>
+          + New Invoice
+        </button>
       </div>
 
-      <div className="card" style={{padding:'1rem', display:'flex', flexDirection:'column', gap:'0.75rem'}}>
-        <div style={{display:'flex', flexWrap:'wrap', gap:'0.5rem'}}>
-          {STATUS_TABS.map(s => (
-            <button key={s} onClick={() => setStatus(s)} style={{padding:'0.375rem 0.75rem', borderRadius:'0.5rem', fontSize:'0.75rem', fontWeight:600, textTransform:'capitalize', border:'none', cursor:'pointer', background: status===s ? 'var(--teal-600)' : '#f5f2ed', color: status===s ? 'white' : 'var(--text-mid)', transition:'all 0.15s'}}>
-              {s}
-            </button>
-          ))}
-        </div>
-        <div style={{position:'relative'}}>
-          <Search size={14} style={{position:'absolute', left:'0.75rem', top:'50%', transform:'translateY(-50%)', color:'var(--text-light)'}} />
-          <input className="input" style={{paddingLeft:'2.25rem'}} placeholder="Search invoices…" value={search} onChange={e => setSearch(e.target.value)} />
-        </div>
+      {/* Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+        {[['Total Revenue', `$${totalRevenue.toFixed(2)}`, '#166534'], ['Outstanding', `$${totalOutstanding.toFixed(2)}`, '#dc2626'], ['Overdue', invoices.filter(i => i.status === 'overdue').length, '#92400e'], ['Unpaid', invoices.filter(i => i.status === 'sent').length, '#1d4ed8']].map(([label, value, color]) => (
+          <div key={label} style={{ background: '#fff', borderRadius: '12px', padding: '1.25rem', border: '1px solid #e5e7eb' }}>
+            <p style={{ margin: 0, fontSize: '0.8rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>{label}</p>
+            <p style={{ margin: '0.5rem 0 0', fontSize: '1.4rem', fontWeight: 700, color }}>{value}</p>
+          </div>
+        ))}
       </div>
 
-      <div className="card" style={{overflow:'hidden'}}>
-        {isLoading ? (
-          <div style={{display:'flex', alignItems:'center', justifyContent:'center', height:'10rem'}}>
-            <div style={{width:'1.5rem', height:'1.5rem', borderRadius:'50%', border:'2px solid var(--teal-500)', borderTopColor:'transparent', animation:'spin 0.8s linear infinite'}} />
-          </div>
-        ) : invoices.length === 0 ? (
-          <div className="empty-state">
-            <div style={{width:'3.5rem', height:'3.5rem', borderRadius:'1rem', background:'rgba(23,162,200,0.08)', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:'1rem'}}>
-              <FileText size={24} style={{color:'var(--teal-500)'}} />
-            </div>
-            <p style={{fontWeight:600, color:'var(--text-dark)'}}>No invoices yet</p>
-            <p style={{fontSize:'0.875rem', marginTop:'0.25rem', marginBottom:'1rem', color:'var(--text-light)'}}>Create your first invoice to get started</p>
-            <button onClick={() => setCreateModal(true)} className="btn-primary"><Plus size={15} />New Invoice</button>
-          </div>
-        ) : (
-          <table className="data-table">
-            <thead><tr><th>Invoice</th><th>Client</th><th>Date</th><th>Due</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead>
+      {/* Filter tabs */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+        {['', 'draft', 'sent', 'paid', 'overdue', 'cancelled'].map(s => (
+          <button key={s} onClick={() => setFilterStatus(s)}
+            style={{ background: filterStatus === s ? '#0d9488' : '#f3f4f6', color: filterStatus === s ? '#fff' : '#374151', border: 'none', borderRadius: '20px', padding: '0.4rem 1rem', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem', textTransform: 'capitalize' }}>
+            {s || 'All'}
+          </button>
+        ))}
+      </div>
+
+      {isLoading ? (
+        <div style={{ textAlign: 'center', padding: '4rem', color: '#6b7280' }}>Loading...</div>
+      ) : displayed.length === 0 ? (
+        <div style={{ background: '#fff', borderRadius: '16px', padding: '4rem', textAlign: 'center', border: '1px solid #e5e7eb' }}>
+          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🧾</div>
+          <h3 style={{ color: '#374151' }}>No invoices found</h3>
+          <button onClick={() => { setForm(emptyForm); setShowModal(true) }}
+            style={{ background: 'linear-gradient(135deg, #0d9488, #0f766e)', color: '#fff', border: 'none', borderRadius: '10px', padding: '0.65rem 1.5rem', fontWeight: 600, cursor: 'pointer', marginTop: '1rem' }}>
+            + New Invoice
+          </button>
+        </div>
+      ) : (
+        <div style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+                {['Invoice #', 'Client', 'Issue Date', 'Due Date', 'Total', 'Balance', 'Status', 'Actions'].map(h => (
+                  <th key={h} style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 600, color: '#6b7280', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
             <tbody>
-              {invoices.map(inv => (
-                <tr key={inv.id}>
-                  <td><span style={{fontFamily:'monospace', fontSize:'0.75rem', fontWeight:600, color:'var(--teal-700)'}}>{inv.invoice_number}</span></td>
-                  <td><span style={{fontWeight:500, fontSize:'0.875rem', color:'var(--text-dark)'}}>{inv.client_name}</span></td>
-                  <td><span style={{fontSize:'0.75rem'}}>{new Date(inv.invoice_date).toLocaleDateString('en-CA')}</span></td>
-                  <td><span style={{fontSize:'0.75rem'}}>{inv.due_date ? new Date(inv.due_date).toLocaleDateString('en-CA') : '—'}</span></td>
-                  <td>
-                    <p style={{fontWeight:600, fontSize:'0.875rem', color:'var(--text-dark)'}}>${Number(inv.total_amount).toFixed(2)}</p>
-                    {inv.balance_due > 0 && <p style={{fontSize:'0.75rem', color:'#d97706'}}>Due: ${Number(inv.balance_due).toFixed(2)}</p>}
+              {displayed.map((inv, i) => (
+                <tr key={inv.id} style={{ borderBottom: i < displayed.length - 1 ? '1px solid #f3f4f6' : 'none' }}>
+                  <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#1a2e1a', fontSize: '0.875rem' }}>{inv.invoice_number}</td>
+                  <td style={{ padding: '0.85rem 1rem', fontSize: '0.875rem', color: '#374151' }}>{inv.client?.full_name || `Client #${inv.client_id}`}</td>
+                  <td style={{ padding: '0.85rem 1rem', fontSize: '0.875rem', color: '#374151' }}>{inv.issue_date}</td>
+                  <td style={{ padding: '0.85rem 1rem', fontSize: '0.875rem', color: inv.status === 'overdue' ? '#dc2626' : '#374151', fontWeight: inv.status === 'overdue' ? 600 : 400 }}>{inv.due_date}</td>
+                  <td style={{ padding: '0.85rem 1rem', fontWeight: 600, color: '#1a2e1a', fontSize: '0.875rem' }}>${inv.total?.toFixed(2)}</td>
+                  <td style={{ padding: '0.85rem 1rem', fontWeight: 600, color: inv.balance_due > 0 ? '#dc2626' : '#166534', fontSize: '0.875rem' }}>${inv.balance_due?.toFixed(2)}</td>
+                  <td style={{ padding: '0.85rem 1rem' }}>
+                    <span style={{ background: statusBg[inv.status] || '#f3f4f6', color: statusColor[inv.status] || '#374151', borderRadius: '20px', padding: '0.2rem 0.65rem', fontSize: '0.78rem', fontWeight: 600, textTransform: 'capitalize' }}>
+                      {inv.status}
+                    </span>
                   </td>
-                  <td>{statusBadge(inv.status)}</td>
-                  <td>
-                    <div style={{display:'flex', alignItems:'center', gap:'0.25rem'}}>
-                      <button onClick={() => openPdf(inv.id)} title="Download PDF" style={{padding:'0.375rem', borderRadius:'0.5rem', background:'transparent', border:'none', cursor:'pointer'}}><Download size={13} style={{color:'var(--teal-600)'}} /></button>
-                      <button onClick={() => sendEmail.mutate(inv.id)} title="Send Email" style={{padding:'0.375rem', borderRadius:'0.5rem', background:'transparent', border:'none', cursor:'pointer'}}><Send size={13} style={{color:'var(--teal-600)'}} /></button>
-                      {['sent','overdue','draft'].includes(inv.status) && (
-                        <button onClick={() => { setPayModal(inv); setPayForm({amount: inv.balance_due, payment_method:'bank_transfer', notes:''}) }} title="Record Payment" style={{padding:'0.375rem', borderRadius:'0.5rem', background:'transparent', border:'none', cursor:'pointer'}}><DollarSign size={13} style={{color:'#10b981'}} /></button>
-                      )}
-                    </div>
+                  <td style={{ padding: '0.85rem 1rem' }}>
+                    {inv.status !== 'paid' && inv.balance_due > 0 && (
+                      <button onClick={() => {
+                        const amount = window.prompt(`Record payment for ${inv.invoice_number} (balance: $${inv.balance_due?.toFixed(2)}):`, inv.balance_due?.toFixed(2))
+                        if (amount) recordPayment.mutate({ id: inv.id, data: { amount: parseFloat(amount), payment_date: today, payment_method: 'e_transfer' } })
+                      }} style={{ background: '#f0fdf4', color: '#166534', border: 'none', borderRadius: '6px', padding: '0.3rem 0.65rem', fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem' }}>
+                        Pay
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        )}
-      </div>
+        </div>
+      )}
 
-      <Modal isOpen={createModal} onClose={() => setCreateModal(false)} title="Create Invoice">
-        <form onSubmit={e => { e.preventDefault(); createInv.mutate(createForm) }} style={{display:'flex', flexDirection:'column', gap:'1rem'}}>
-          <div><label className="label">Client</label>
-            <select required className="input" value={createForm.client_id} onChange={e => setCreateForm(p=>({...p,client_id:e.target.value}))}>
-              <option value="">Select client…</option>
-              {clients.map(c => <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>)}
-            </select>
-          </div>
-          <div><label className="label">Due Date</label><input type="date" className="input" value={createForm.due_date} onChange={e => setCreateForm(p=>({...p,due_date:e.target.value}))} /></div>
-          {sessions.filter(s => !createForm.client_id || s.client_id == createForm.client_id).length > 0 && (
-            <div><label className="label">Link Unbilled Sessions</label>
-              <div style={{display:'flex', flexDirection:'column', gap:'0.5rem', maxHeight:'10rem', overflowY:'auto'}}>
-                {sessions.filter(s => !createForm.client_id || s.client_id == createForm.client_id).map(s => (
-                  <label key={s.id} style={{display:'flex', alignItems:'center', gap:'0.75rem', padding:'0.625rem', borderRadius:'0.75rem', border:'1px solid #e5e0d8', cursor:'pointer', background: createForm.session_ids.includes(s.id) ? '#f0f9ff' : 'white'}}>
-                    <input type="checkbox" checked={createForm.session_ids.includes(s.id)}
-                      onChange={e => setCreateForm(p => ({...p, session_ids: e.target.checked ? [...p.session_ids, s.id] : p.session_ids.filter(i=>i!==s.id)}))} />
-                    <span style={{fontSize:'0.875rem'}}>{new Date(s.session_date).toLocaleDateString('en-CA')} — {s.duration_minutes}min — ${s.rate}</span>
-                  </label>
-                ))}
+      {showModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', padding: '2rem', width: '100%', maxWidth: '480px', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ margin: 0, color: '#1a2e1a', fontWeight: 700 }}>New Invoice</h2>
+              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#6b7280' }}>×</button>
+            </div>
+            <div style={{ display: 'grid', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.3rem', fontWeight: 600, color: '#374151', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Client *</label>
+                <select value={form.client_id} onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', border: '1.5px solid #e5e7eb', borderRadius: '8px', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }}>
+                  <option value="">Select client...</option>
+                  {clients.map(c => <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>)}
+                </select>
+              </div>
+              {[['Issue Date *', 'issue_date', 'date'], ['Due Date *', 'due_date', 'date'], ['Tax Rate', 'tax_rate', 'number'], ['Discount ($)', 'discount', 'number']].map(([label, field, type]) => (
+                <div key={field}>
+                  <label style={{ display: 'block', marginBottom: '0.3rem', fontWeight: 600, color: '#374151', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</label>
+                  <input type={type} value={form[field]} onChange={e => setForm(f => ({ ...f, [field]: e.target.value }))} step={field === 'tax_rate' ? '0.01' : '0.01'}
+                    style={{ width: '100%', padding: '0.6rem 0.8rem', border: '1.5px solid #e5e7eb', borderRadius: '8px', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+              ))}
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.3rem', fontWeight: 600, color: '#374151', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Notes</label>
+                <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3}
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', border: '1.5px solid #e5e7eb', borderRadius: '8px', fontSize: '0.9rem', outline: 'none', resize: 'vertical', boxSizing: 'border-box' }} />
               </div>
             </div>
-          )}
-          <div><label className="label">Notes</label><textarea className="input" rows={2} value={createForm.notes} onChange={e => setCreateForm(p=>({...p,notes:e.target.value}))} /></div>
-          <div style={{display:'flex', gap:'0.75rem', paddingTop:'0.5rem'}}>
-            <button type="submit" disabled={createInv.isPending} className="btn-primary" style={{flex:1, justifyContent:'center'}}>{createInv.isPending ? 'Creating…' : 'Create Invoice'}</button>
-            <button type="button" onClick={() => setCreateModal(false)} className="btn-secondary">Cancel</button>
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem' }}>
+              <button onClick={handleSubmit} disabled={createMutation.isPending}
+                style={{ flex: 1, background: 'linear-gradient(135deg, #0d9488, #0f766e)', color: '#fff', border: 'none', borderRadius: '10px', padding: '0.75rem', fontWeight: 600, cursor: 'pointer', fontSize: '0.95rem' }}>
+                {createMutation.isPending ? 'Creating...' : 'Create Invoice'}
+              </button>
+              <button onClick={() => setShowModal(false)}
+                style={{ flex: 1, background: '#f3f4f6', color: '#374151', border: 'none', borderRadius: '10px', padding: '0.75rem', fontWeight: 600, cursor: 'pointer', fontSize: '0.95rem' }}>Cancel</button>
+            </div>
           </div>
-        </form>
-      </Modal>
-
-      <Modal isOpen={!!payModal} onClose={() => setPayModal(null)} title="Record Payment">
-        <form onSubmit={e => { e.preventDefault(); recordPayment.mutate({ id: payModal.id, data: payForm }) }} style={{display:'flex', flexDirection:'column', gap:'1rem'}}>
-          <div style={{padding:'1rem', borderRadius:'0.75rem', background:'var(--cream)', border:'1px solid #e8e4dc'}}>
-            <p style={{fontSize:'0.75rem', color:'var(--text-light)'}}>Invoice</p>
-            <p style={{fontWeight:700, color:'var(--text-dark)'}}>{payModal?.invoice_number}</p>
-            <p style={{fontSize:'0.875rem', marginTop:'0.25rem', color:'var(--text-mid)'}}>Balance due: <span style={{fontWeight:600, color:'#d97706'}}>${Number(payModal?.balance_due||0).toFixed(2)}</span></p>
-          </div>
-          <div><label className="label">Amount</label><input type="number" step="0.01" required className="input" value={payForm.amount} onChange={e => setPayForm(p=>({...p,amount:e.target.value}))} /></div>
-          <div><label className="label">Payment Method</label>
-            <select className="input" value={payForm.payment_method} onChange={e => setPayForm(p=>({...p,payment_method:e.target.value}))}>
-              <option value="bank_transfer">Bank Transfer</option>
-              <option value="cash">Cash</option>
-              <option value="cheque">Cheque</option>
-              <option value="credit_card">Credit Card</option>
-              <option value="insurance">Insurance</option>
-              <option value="other">Other</option>
-            </select>
-          </div>
-          <div><label className="label">Notes</label><textarea className="input" rows={2} value={payForm.notes} onChange={e => setPayForm(p=>({...p,notes:e.target.value}))} /></div>
-          <div style={{display:'flex', gap:'0.75rem', paddingTop:'0.5rem'}}>
-            <button type="submit" disabled={recordPayment.isPending} className="btn-gold" style={{flex:1, justifyContent:'center'}}>{recordPayment.isPending ? 'Recording…' : 'Record Payment'}</button>
-            <button type="button" onClick={() => setPayModal(null)} className="btn-secondary">Cancel</button>
-          </div>
-        </form>
-      </Modal>
+        </div>
+      )}
     </div>
   )
 }
