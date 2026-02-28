@@ -1,10 +1,8 @@
 import axios from 'axios'
 import toast from 'react-hot-toast'
 
-const BASE_URL = 'https://rmt-billing-backend-production.up.railway.app/api/v1'
-
 const api = axios.create({
-  baseURL: BASE_URL,
+  baseURL: import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api/v1` : '/api/v1',
   headers: { 'Content-Type': 'application/json' },
 })
 
@@ -30,7 +28,7 @@ api.interceptors.response.use(
 export const authApi = {
   login: (data) => api.post('/auth/login', data),
   register: (data) => api.post('/auth/register', data),
-  me: () => api.get('/users/me'),
+  me: () => api.get('/auth/me'),
 }
 
 export default api
