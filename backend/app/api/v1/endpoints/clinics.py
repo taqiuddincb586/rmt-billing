@@ -12,7 +12,7 @@ from app.core.security import get_current_user
 router = APIRouter()
 
 
-@router.get("/", response_model=list[ClinicResponse])
+@router.get("", response_model=list[ClinicResponse])
 async def list_clinics(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -23,7 +23,7 @@ async def list_clinics(
     return result.scalars().all()
 
 
-@router.post("/", response_model=ClinicResponse, status_code=201)
+@router.post("", response_model=ClinicResponse, status_code=201)
 async def create_clinic(
     data: ClinicCreate,
     db: AsyncSession = Depends(get_db),
