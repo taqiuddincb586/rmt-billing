@@ -2,8 +2,7 @@
 RMT Billing Management System - FastAPI Backend
 """
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
-from fastapi.responses import RedirectResponse
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -32,7 +31,6 @@ app = FastAPI(
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     lifespan=lifespan,
-    redirect_slashes=False,
 )
 
 app.add_middleware(
