@@ -1,7 +1,6 @@
 import axios from 'axios'
 import toast from 'react-hot-toast'
 
-// Hardcoded HTTPS fallback - never use HTTP
 const BASE_URL = 'https://rmt-billing-backend-production.up.railway.app/api/v1'
 
 const api = axios.create({
@@ -31,7 +30,7 @@ api.interceptors.response.use(
 export const authApi = {
   login: (data) => api.post('/auth/login', data),
   register: (data) => api.post('/auth/register', data),
-  me: () => api.get('/auth/me'),
+  me: () => api.get('/users/me'),
 }
 
 export default api
