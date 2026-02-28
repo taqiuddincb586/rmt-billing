@@ -32,8 +32,7 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
-    lifespan=lifespan,
-    redirect_slashes=False,
+    lifespan=lifespan,    
 )
 
 # Middleware - allow all origins to fix CORS
