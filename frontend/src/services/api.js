@@ -1,10 +1,8 @@
 import axios from 'axios'
 import toast from 'react-hot-toast'
 
-const BASE_URL = 'https://rmt-billing-backend-production.up.railway.app/api/v1'
-
 const api = axios.create({
-  baseURL: BASE_URL,
+  baseURL: '/api/v1',
   headers: { 'Content-Type': 'application/json' },
 })
 
