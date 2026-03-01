@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../services/api'
 import toast from 'react-hot-toast'
 
-const fetchClients = () => api.get('/clients/').then(r => r.data)
+const fetchClients = () => api.get('/clients').then(r => r.data)
 
 export default function ClientsPage() {
   const queryClient = useQueryClient()
@@ -15,19 +15,19 @@ export default function ClientsPage() {
   const [form, setForm] = useState(emptyForm)
 
   const createMutation = useMutation({
-    mutationFn: (data) => api.post('/clients/', data),
+    mutationFn: (data) => api.post('/clients', data),
     onSuccess: () => { queryClient.invalidateQueries(['clients']); toast.success('Client added!'); setShowModal(false); setForm(emptyForm) },
     onError: () => toast.error('Failed to save client')
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => api.put(`/clients/${id}/`, data),
+    mutationFn: ({ id, data }) => api.put(`/clients/${id}`, data),
     onSuccess: () => { queryClient.invalidateQueries(['clients']); toast.success('Client updated!'); setShowModal(false); setEditing(null); setForm(emptyForm) },
     onError: () => toast.error('Failed to update client')
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (id) => api.delete(`/clients/${id}/`),
+    mutationFn: (id) => api.delete(`/clients/${id}`),
     onSuccess: () => { queryClient.invalidateQueries(['clients']); toast.success('Client removed') },
   })
 

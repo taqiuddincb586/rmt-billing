@@ -3,9 +3,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../services/api'
 import toast from 'react-hot-toast'
 
-const fetchSessions = () => api.get('/sessions/').then(r => r.data)
-const fetchClients = () => api.get('/clients/').then(r => r.data)
-const fetchClinics = () => api.get('/clinics/').then(r => r.data)
+const fetchSessions = () => api.get('/sessions').then(r => r.data)
+const fetchClients = () => api.get('/clients').then(r => r.data)
+const fetchClinics = () => api.get('/clinics').then(r => r.data)
 
 export default function SessionsPage() {
   const queryClient = useQueryClient()
@@ -21,19 +21,19 @@ export default function SessionsPage() {
   const [form, setForm] = useState(emptyForm)
 
   const createMutation = useMutation({
-    mutationFn: (data) => api.post('/sessions/', data),
+    mutationFn: (data) => api.post('/sessions', data),
     onSuccess: () => { queryClient.invalidateQueries(['sessions']); toast.success('Session added!'); setShowModal(false); setForm(emptyForm) },
     onError: () => toast.error('Failed to save session')
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => api.put(`/sessions/${id}/`, data),
+    mutationFn: ({ id, data }) => api.put(`/sessions/${id}`, data),
     onSuccess: () => { queryClient.invalidateQueries(['sessions']); toast.success('Session updated!'); setShowModal(false); setEditing(null); setForm(emptyForm) },
     onError: () => toast.error('Failed to update session')
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (id) => api.delete(`/sessions/${id}/`),
+    mutationFn: (id) => api.delete(`/sessions/${id}`),
     onSuccess: () => { queryClient.invalidateQueries(['sessions']); toast.success('Session removed') }
   })
 

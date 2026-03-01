@@ -3,8 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../services/api'
 import toast from 'react-hot-toast'
 
-const fetchInvoices = () => api.get('/invoices/').then(r => r.data)
-const fetchClients = () => api.get('/clients/').then(r => r.data)
+const fetchInvoices = () => api.get('/invoices').then(r => r.data)
+const fetchClients = () => api.get('/clients').then(r => r.data)
 
 export default function InvoicesPage() {
   const queryClient = useQueryClient()
@@ -19,7 +19,7 @@ export default function InvoicesPage() {
   const [form, setForm] = useState(emptyForm)
 
   const createMutation = useMutation({
-    mutationFn: (data) => api.post('/invoices/', data),
+    mutationFn: (data) => api.post('/invoices', data),
     onSuccess: () => { queryClient.invalidateQueries(['invoices']); toast.success('Invoice created!'); setShowModal(false); setForm(emptyForm) },
     onError: () => toast.error('Failed to create invoice')
   })
@@ -31,7 +31,7 @@ export default function InvoicesPage() {
   }
 
   const recordPayment = useMutation({
-    mutationFn: ({ id, data }) => api.post(`/invoices/${id}/payments/`, data),
+    mutationFn: ({ id, data }) => api.post(`/invoices/${id}/payments`, data),
     onSuccess: () => { queryClient.invalidateQueries(['invoices']); toast.success('Payment recorded!') },
     onError: () => toast.error('Failed to record payment')
   })

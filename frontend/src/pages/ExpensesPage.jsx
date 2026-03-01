@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../services/api'
 import toast from 'react-hot-toast'
 
-const fetchExpenses = () => api.get('/expenses/').then(r => r.data)
+const fetchExpenses = () => api.get('/expenses').then(r => r.data)
 
 const CATEGORIES = ['supplies', 'equipment', 'rent', 'insurance', 'education', 'marketing', 'software', 'utilities', 'other']
 
@@ -19,19 +19,19 @@ export default function ExpensesPage() {
   const [form, setForm] = useState(emptyForm)
 
   const createMutation = useMutation({
-    mutationFn: (data) => api.post('/expenses/', data),
+    mutationFn: (data) => api.post('/expenses', data),
     onSuccess: () => { queryClient.invalidateQueries(['expenses']); toast.success('Expense added!'); setShowModal(false); setForm(emptyForm) },
     onError: () => toast.error('Failed to save expense')
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => api.put(`/expenses/${id}/`, data),
+    mutationFn: ({ id, data }) => api.put(`/expenses/${id}`, data),
     onSuccess: () => { queryClient.invalidateQueries(['expenses']); toast.success('Expense updated!'); setShowModal(false); setEditing(null); setForm(emptyForm) },
     onError: () => toast.error('Failed to update expense')
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (id) => api.delete(`/expenses/${id}/`),
+    mutationFn: (id) => api.delete(`/expenses/${id}`),
     onSuccess: () => { queryClient.invalidateQueries(['expenses']); toast.success('Expense deleted') }
   })
 
