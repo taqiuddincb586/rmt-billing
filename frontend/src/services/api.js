@@ -1,4 +1,4 @@
-// v2
+// v3
 import axios from 'axios'
 import toast from 'react-hot-toast'
 
@@ -10,6 +10,10 @@ const api = axios.create({
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token')
   if (token) config.headers.Authorization = `Bearer ${token}`
+  // Remove trailing slash to match backend routes
+  if (config.url && config.url.endsWith('/') && config.url.length > 1) {
+    config.url = config.url.slice(0, -1)
+  }
   return config
 })
 
