@@ -12,10 +12,3 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
-```
-
----
-
-**Fix 3: Railway frontend Variables** — go to Railway → **rmt-billing-frontend** → **Variables** → add:
-```
-VITE_API_URL=https://rmt-billing-backend-production.up.railway.app/api/v1
